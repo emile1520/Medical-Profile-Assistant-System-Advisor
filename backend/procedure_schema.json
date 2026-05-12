@@ -1,0 +1,181 @@
+{
+  "activeProcedure": {
+    "effectiveActId": 9124,
+    "status": "in_progress",
+    "service": {
+      "key": "endodontics",
+      "label": "Endodontics"
+    },
+    "offering": {
+      "id": 441,
+      "label": "Root Canal Treatment",
+      "localActKey": "rootCanalTreatment",
+      "description": "Endodontic treatment to clean, shape, disinfect, and obturate the root canal system."
+    },
+    "patientMiniState": {
+      "patientId": 1802,
+      "age": 42,
+      "sex": "female",
+      "medical": {
+        "smokingStatus": {
+          "value": "smokerLessThan10CigarettesPerDay",
+          "label": "Smoker, less than 10 cigarettes/day"
+        },
+        "diabetesStatus": {
+          "value": "not_diabetic",
+          "label": "Not diabetic"
+        },
+        "allergies": {
+          "value": ["penicillin"]
+        }
+      }
+    },
+    "caseContext": {
+      "caseId": 301,
+      "scope": {
+        "type": "tooth",
+        "value": "36",
+        "label": "Tooth 36"
+      },
+      "clinicalGoal": "preserve_tooth"
+    },
+    "variants": [
+      {
+        "key": "anatomy.tooth",
+        "label": "Tooth",
+        "fieldType": "tooth_picker",
+        "required": true,
+        "locked": true,
+        "value": "36",
+        "description": "The treated tooth. Locked because it came from the approved plan."
+      },
+      {
+        "key": "endo.treatmentExtent",
+        "label": "Treatment extent",
+        "fieldType": "select",
+        "required": true,
+        "value": "complete_root_canal_treatment",
+        "options": [
+          {"value": "complete_root_canal_treatment", "label": "Complete root canal treatment"},
+          {"value": "partial_or_emergency_stage",   "label": "Partial / emergency stage"}
+        ],
+        "description": "Whether the doctor is completing the full RCT or only a staged/emergency portion."
+      },
+      {
+        "key": "clinical.isolationMethod",
+        "label": "Isolation method",
+        "fieldType": "select",
+        "required": false,
+        "value": null,
+        "options": [
+          {"value": "rubber_dam", "label": "Rubber dam"},
+          {"value": "non_rubber_dam_other_documented_exception", "label": "No rubber dam, documented exception"},
+          {"value": "not_recorded", "label": "Not recorded"}
+        ],
+        "description": "How the field was isolated. Map phrases like 'rubber dam placed' here."
+      }
+    ],
+    "findings": [
+      {
+        "key": "endo.pulpStatus",
+        "label": "Pulp status",
+        "fieldType": "select",
+        "value": "necrotic_pulp",
+        "alreadyFilled": true,
+        "options": [
+          {"value": "normal_pulp", "label": "Normal pulp"},
+          {"value": "reversible_pulpitis", "label": "Reversible pulpitis"},
+          {"value": "irreversible_pulpitis", "label": "Irreversible pulpitis"},
+          {"value": "necrotic_pulp", "label": "Necrotic pulp"}
+        ],
+        "description": "Pulpal diagnosis."
+      },
+      {
+        "key": "endo.apicalStatus",
+        "label": "Apical status",
+        "fieldType": "select",
+        "required": true,
+        "value": null,
+        "options": [
+          {"value": "normal_apical_tissues", "label": "Normal apical tissues"},
+          {"value": "symptomatic_apical_periodontitis", "label": "Symptomatic apical periodontitis"},
+          {"value": "asymptomatic_apical_periodontitis", "label": "Asymptomatic apical periodontitis"},
+          {"value": "acute_apical_abscess", "label": "Acute apical abscess"}
+        ],
+        "description": "Periapical diagnosis."
+      },
+      {
+        "key": "endo.percussionTenderness",
+        "label": "Percussion tenderness",
+        "fieldType": "boolean",
+        "value": true,
+        "alreadyFilled": true,
+        "description": "Tooth tender to percussion."
+      },
+      {
+        "key": "endo.painQuality",
+        "label": "Pain quality",
+        "fieldType": "multi_select",
+        "value": ["spontaneous", "lingering_cold"],
+        "options": [
+          {"value": "none", "label": "No pain"},
+          {"value": "spontaneous", "label": "Spontaneous pain"},
+          {"value": "lingering_cold", "label": "Lingering cold pain"},
+          {"value": "biting_pain", "label": "Biting pain"}
+        ],
+        "description": "Structured pain description."
+      }
+    ],
+    "results": {
+      "schemaKey": "endo.rootCanalTreatmentResult",
+      "fields": [
+        {
+          "key": "canals_treated",
+          "label": "Canals treated",
+          "fieldType": "multi_select",
+          "required": true,
+          "value": ["mesiobuccal", "mesiolingual"],
+          "options": [
+            {"value": "mesiobuccal", "label": "MB"},
+            {"value": "mesiolingual", "label": "ML"},
+            {"value": "distal", "label": "D"}
+          ],
+          "description": "Canals actually negotiated, shaped, and treated."
+        },
+        {
+          "key": "working_length_mm",
+          "label": "Working length",
+          "fieldType": "number",
+          "unit": "mm",
+          "required": false,
+          "value": null,
+          "description": "Measured working length. e.g. 'working length twenty one millimeters'."
+        },
+        {
+          "key": "obturation_completed",
+          "label": "Obturation completed",
+          "fieldType": "boolean",
+          "required": true,
+          "value": false,
+          "description": "Whether final canal obturation was completed in this visit."
+        },
+        {
+          "key": "materials_used",
+          "label": "Materials used",
+          "fieldType": "tags",
+          "required": false,
+          "value": ["calcium_hydroxide"],
+          "description": "Medications, sealers, irrigants, or temporary materials used."
+        },
+        {
+          "key": "doctor_notes",
+          "label": "Clinical notes",
+          "fieldType": "textarea",
+          "required": false,
+          "value": "Access opened, necrotic canal contents removed, calcium hydroxide placed.",
+          "description": "Free clinical narrative."
+        }
+      ]
+    }
+  }
+}
