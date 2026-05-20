@@ -1,302 +1,282 @@
 # MPA — Deployment Playbook
 
-Target: **https://mpa.tomorrow.services/** → served from `forge@3.136.112.231:/home/forge/mpa`.
+**Production target:** https://mpa.tomorrow.services/ → `forge@3.136.112.231:/home/forge/mpa`
+**Server type:** Ubuntu 24.04 LTS, **Laravel Forge–managed**
 
-## What this deploys
+## What gets deployed
 
 ```
-   Seraph (their site)                            mpa.tomorrow.services
-   ──────────────────────                         ─────────────────────────────
+   Seraph (their site, any origin)               mpa.tomorrow.services
+   ──────────────────────                        ─────────────────────────────
    <script src="https://mpa.tomorrow.services/sdk/mpa-sdk.js">
                                                        │
                                                        ▼
-                                                  nginx (TLS, /api proxy, static)
+                                                  nginx (Forge-provisioned TLS)
                                                        │
                             ┌──────────────────────────┼──────────────────────────┐
                             ▼                          ▼                          ▼
-                       /  → sdk/example.html       /sdk/mpa-sdk.js          /api/* ──► FastAPI ──► Whisper
-                       /mock-seraph/...            (CORS: *)                 (uvicorn)    BART + NER
-                                                                                          Ollama (Qwen3:1.7b)
+                       /  → sdk/example.html       /sdk/mpa-sdk.js          /api/* ──► FastAPI (uvicorn)
+                       /mock-seraph/...            (CORS: *)                 ▼          Whisper-medium (STT)
+                                                                       127.0.0.1:8000   BART zero-shot + bio-NER
+                                                                                        Ollama → Qwen3:1.7B
 ```
 
-- The **React frontend is not deployed**. It was only your local test harness.
+- The React frontend is **not deployed**. It was only your local test harness.
 - The **SDK file** (`sdk/mpa-sdk.js`) is what Seraph embeds in their own site.
-- The **demo page** (`sdk/example.html`) is served at the root URL so you and
-  the Seraph dev team can verify the pipeline live, without writing any code.
-- The **backend** runs as a systemd service; nginx reverse-proxies `/api/*` to it.
+- The **demo page** (`sdk/example.html`) is served at the root URL so anyone
+  can verify the pipeline works without writing code.
+- The **backend** runs as a systemd service; nginx reverse-proxies `/api/*`.
 
-This playbook deploys exactly that on a Linux server. Run each section in order.
+---
 
-> When a command starts with `sudo`, you'll get a password prompt if `forge`
-> has sudo. If it doesn't, ask Tomorrow Services for sudo access first.
+## ⚠ Two phases (because the initial server was undersized)
+
+The first deploy attempted on a 900 MB RAM box. Whisper-medium + BART +
+biomedical NER + Qwen3-1.7B need ~8–10 GB resident. So we did:
+
+- **Phase 1** — SDK + demo + nginx + SSL. Doesn't load any ML models, fits
+  in 900 MB easily. This is what's live now.
+- **Phase 2** — backend (uvicorn, Whisper, transformers, Ollama). Requires
+  the server to be resized to ≥ 8 GB RAM (16 GB recommended).
+
+If you're deploying from scratch on a properly sized server, you can do
+both phases back-to-back without the wait.
 
 ---
 
 ## 0. SSH in
 
-On your laptop:
+From your laptop:
 
 ```bash
 ssh forge@3.136.112.231
 ```
 
+Forge sets up the `forge` user automatically. SSH-key auth is preset by
+Forge during server provisioning; add new keys via the Forge dashboard
+(*Server → SSH Keys*) rather than editing `~/.ssh/authorized_keys` directly.
+
 Everything below runs **on the server** unless I say otherwise.
 
 ---
 
-## 1. Figure out the server state
+## 1. Survey the server (3 min)
 
 ```bash
-# Is this a Laravel Forge-managed server?
 ls -la /home/forge/.forge 2>/dev/null && echo "→ Forge-managed" || echo "→ Plain server"
-
-# OS + RAM + disk
 cat /etc/os-release | head -2
 free -h
 df -h /
-
-# What's already installed?
 which python3 nginx ffmpeg certbot ollama 2>/dev/null
 python3 --version 2>/dev/null
-nginx -v        2>&1
+nginx -v 2>&1
 ```
 
-**If Forge-managed:** add `mpa.tomorrow.services` as a site in the Forge
-dashboard (pick "Static HTML"), then later you'll paste my `nginx-mpa.conf`
-into Forge's nginx editor for that site. Or skip the dashboard and just
-drop the config file directly (Section 6) — Forge won't know about it but
-nginx will.
+**Pass conditions before continuing:**
 
-**If RAM < 8 GB:** stop and tell Charbel. Whisper-medium + BART + NER + Qwen
-needs ~8-10 GB resident. If it's tight, we'll switch Whisper to "small".
+| Check | Required |
+|---|---|
+| `free -h` total Mem | **≥ 8 GB for Phase 2** (Phase 1 OK at any size) |
+| Disk free | **≥ 20 GB** (model caches alone are ~5 GB) |
+| OS | Ubuntu 22.04 or 24.04 |
+| Python | 3.10+ |
+
+If RAM is under 8 GB, do Phase 1 anyway (it's useful — gets the URL live),
+then ask Tomorrow Services to resize before starting Phase 2.
 
 ---
 
-## 2. Install system packages
+## 2. Install system packages (Phase 1)
 
 ```bash
 sudo apt update
-sudo apt install -y \
-    python3 python3-venv python3-dev python3-pip \
-    build-essential \
-    ffmpeg \
-    git \
-    nginx \
-    certbot python3-certbot-nginx
+sudo apt install -y git certbot python3-certbot-nginx
 ```
 
-No Node.js needed — we're not building a React app anymore. (Node only matters
-if you keep developing the local frontend test harness.)
+> On Forge-managed servers, **certbot is not needed** for SSL — Forge issues
+> certs via its dashboard. We're installing it just to have it available.
+>
+> nginx is already installed by Forge.
+> Skip ffmpeg / python3-venv / etc. until Phase 2 — those are backend deps.
 
 ---
 
-## 3. Install Ollama + pull the LLM
+## 3. Get the code onto the server
+
+```bash
+cd /home/forge
+git clone https://github.com/emile1520/Medical-Profile-Assistant-System-Advisor.git mpa
+cd mpa
+ls
+# Expected: backend/  deploy/  sdk/  frontend/  gantt.py  .gitignore
+```
+
+For future updates: `cd /home/forge/mpa && git pull`.
+
+---
+
+## 4. Make the SDK directory readable by nginx
+
+nginx runs as the `www-data` user. It needs the execute (`x`) bit on every
+parent directory between `/` and the files it serves, and the read (`r`)
+bit on the files themselves.
+
+```bash
+chmod o+x /home/forge /home/forge/mpa /home/forge/mpa/sdk /home/forge/mpa/sdk/mock-seraph
+ls -la /home/forge/mpa/sdk/example.html /home/forge/mpa/sdk/mpa-sdk.js
+# Both files should show "-rw-r--r--" — world-readable.
+```
+
+Skip this and every request to `/` returns 403 Forbidden.
+
+---
+
+## 5. Install the nginx site (Forge-managed approach)
+
+In the Forge dashboard, `mpa.tomorrow.services` should already exist as a
+"Static HTML" site (Forge will have provisioned an SSL cert automatically).
+The wrapper config lives at `/etc/nginx/sites-available/mpa.tomorrow.services`
+and `include`s a per-site file we own:
+**`/etc/nginx/forge-conf/<site-id>/site.conf`**.
+
+Find the site ID Forge assigned:
+
+```bash
+SITE_ID=$(grep -oP 'forge-conf/\K[0-9]+' \
+    /etc/nginx/sites-available/mpa.tomorrow.services | head -1)
+echo "Site ID: $SITE_ID"
+```
+
+Back up the default and drop in our config:
+
+```bash
+sudo cp /etc/nginx/forge-conf/$SITE_ID/site.conf \
+        /etc/nginx/forge-conf/$SITE_ID/site.conf.bak
+
+sudo cp /home/forge/mpa/deploy/forge-site.conf \
+        /etc/nginx/forge-conf/$SITE_ID/site.conf
+
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+> If you're on a **non-Forge** server, use `deploy/nginx-mpa.conf` instead —
+> drop it in `/etc/nginx/sites-available/`, `ln -s` it into `sites-enabled/`,
+> and run `sudo certbot --nginx -d mpa.tomorrow.services` for SSL.
+
+---
+
+## 6. Phase 1 smoke test
+
+```bash
+curl -I https://mpa.tomorrow.services/
+curl    https://mpa.tomorrow.services/healthz
+curl -s https://mpa.tomorrow.services/sdk/mpa-sdk.js | head -3
+curl -s https://mpa.tomorrow.services/mock-seraph/schemas-catalog.json | head -3
+curl -i https://mpa.tomorrow.services/api/procedure-types 2>&1 | head -3
+```
+
+| Endpoint | Expected |
+|---|---|
+| `/` | `HTTP/2 200`, `Content-Type: text/html` |
+| `/healthz` | `ok` |
+| `/sdk/mpa-sdk.js` | starts with `(function (global) {` |
+| `/mock-seraph/...` | starts with `{` |
+| `/api/procedure-types` | **502 Bad Gateway** (correct — backend isn't running yet) |
+
+Then open **https://mpa.tomorrow.services/** in a browser — you should see
+the SDK demo page. Recording won't work end-to-end until Phase 2; that's fine.
+
+**Phase 1 done.** If RAM is < 8 GB, stop here and request a resize.
+
+---
+
+## 7. Phase 2 — Install Ollama + pull the LLM
+
+Requires **≥ 8 GB RAM** to actually run, but the install/pull itself only
+needs disk:
 
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh
 sudo systemctl enable --now ollama
 ollama --version
-
-# Pull the model the backend uses.
-ollama pull qwen3:1.7b
-
-# Smoke-test.
-ollama run qwen3:1.7b "Say hello in one word."
+ollama pull qwen3:1.7b           # ~1.5 GB download
+ollama run qwen3:1.7b "Say hi."  # smoke test
 ```
 
-If `qwen3:1.7b` isn't available anymore, check https://ollama.com/library/qwen3
-for the current tag and update the `QWEN_MODEL` constant near the top of
-`backend/llm.py`.
+If `qwen3:1.7b` gets renamed by Ollama, check https://ollama.com/library/qwen3
+and update the `QWEN_MODEL` constant near the top of `backend/llm.py`.
 
 ---
 
-## 4. Get the code onto the server
-
-Pick one — **git is strongly preferred** for future updates.
-
-### Option A — Git (recommended)
+## 8. Phase 2 — Install backend deps (~20 min, mostly downloads)
 
 ```bash
-cd /home/forge
-git clone <your-github-url> mpa
-cd mpa
-```
+sudo apt install -y python3-venv python3-dev python3-pip build-essential ffmpeg
 
-If the repo isn't on GitHub yet, push it first from your laptop:
-
-```bash
-git remote add origin git@github.com:<your-org>/medical-profile-assistant.git
-git push -u origin main
-```
-
-### Option B — rsync from your laptop
-
-```bash
-# Run on your laptop, from the parent of the project folder:
-rsync -avz --delete \
-    --exclude '.git' \
-    --exclude 'node_modules' \
-    --exclude 'venv' \
-    --exclude 'backend/venv' \
-    --exclude 'backend/__pycache__' \
-    --exclude 'backend/audios' \
-    --exclude 'backend/medical_assistant.db' \
-    --exclude 'frontend' \
-    Medical-Profile-Assistant-System-Advisor-main/ \
-    forge@3.136.112.231:/home/forge/mpa/
-```
-
-(Note the `--exclude 'frontend'` — we don't need it on the server.)
-
-After either option, you should have on the server:
-```
-/home/forge/mpa/
-    backend/
-    sdk/                ← demo + the SDK file Seraph loads
-        example.html
-        mpa-sdk.js
-        mock-seraph/schemas-catalog.json
-    deploy/             ← configs + this playbook
-```
-
----
-
-## 5. Build & install the backend
-
-```bash
 cd /home/forge/mpa/backend
-
 python3 -m venv venv
 source venv/bin/activate
-
-# IMPORTANT: CPU-only torch first — otherwise pip pulls the multi-GB CUDA build.
 pip install --upgrade pip
+
+# CPU-only torch FIRST — otherwise pip pulls the multi-GB CUDA build.
 pip install --index-url https://download.pytorch.org/whl/cpu torch==2.11.0
 
 pip install -r requirements.txt
 
-# Pre-download the Whisper model (~1.5 GB) so the first request isn't 5 minutes.
+# Pre-download the models so the first request isn't a 5-minute hang.
+# These ARE blocking on RAM — Whisper-medium needs ~5 GB to load.
 python -c "import whisper; whisper.load_model('medium')"
-
-# Pre-download HuggingFace models (~2 GB total).
 python -c "
 from transformers import pipeline
 pipeline('zero-shot-classification', model='facebook/bart-large-mnli')
 pipeline('token-classification', model='d4data/biomedical-ner-all', aggregation_strategy='simple')
 "
 
-# Smoke-test — should print 'Whisper model loaded!' then start uvicorn.
-# Ctrl+C once you see 'Uvicorn running on http://127.0.0.1:8000'.
+# Smoke-test the FastAPI app
 uvicorn main:app --host 127.0.0.1 --port 8000
+# In another tab: curl http://127.0.0.1:8000/procedure-types
+# Then Ctrl+C — systemd will run it for real.
 ```
-
-In a second SSH session, verify it answers locally:
-
-```bash
-curl http://127.0.0.1:8000/procedure-types
-```
-
-Then Ctrl+C the uvicorn process — systemd will take over.
 
 ---
 
-## 6. Install the systemd service
+## 9. Phase 2 — Start the backend service
 
 ```bash
 sudo cp /home/forge/mpa/deploy/mpa-backend.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now mpa-backend
 
-# Watch first boot — takes 30-60s while it loads Whisper + BART + NER.
 sudo journalctl -u mpa-backend -f
-# Ctrl+C once you see "Application startup complete."
+# Wait for "Application startup complete." — first boot takes 30-60s.
 
-# Verify it's listening locally:
 curl http://127.0.0.1:8000/procedure-types
+curl https://mpa.tomorrow.services/api/procedure-types   # no more 502!
 ```
-
-If it crash-loops, the log tail tells you why. Common causes: missing ffmpeg,
-wrong venv path in the service file, out-of-memory (drop to whisper-small).
 
 ---
 
-## 7. Install the nginx site
+## 10. End-to-end test (Phase 2 done)
+
+Open https://mpa.tomorrow.services/ → *Start auto-detect case* → *Start recording*
+→ say *"adding a composite filling on tooth 14"* → *Stop recording*.
+
+While doing this, watch the backend log in another SSH tab:
 
 ```bash
-sudo cp /home/forge/mpa/deploy/nginx-mpa.conf \
-        /etc/nginx/sites-available/mpa.tomorrow.services
-
-# Check what else is enabled — make sure nothing else is grabbing this host.
-ls -la /etc/nginx/sites-enabled/
-
-# Enable our site
-sudo ln -s /etc/nginx/sites-available/mpa.tomorrow.services \
-           /etc/nginx/sites-enabled/
-
-# Test config & reload
-sudo nginx -t
-sudo systemctl reload nginx
-
-# Verify
-curl -I http://mpa.tomorrow.services/                          # should serve example.html
-curl    http://mpa.tomorrow.services/healthz                   # should print "ok"
-curl    http://mpa.tomorrow.services/sdk/mpa-sdk.js | head -5  # should be JS
-curl    http://mpa.tomorrow.services/api/procedure-types       # should be JSON
-```
-
-> If you went the Forge dashboard route, paste `nginx-mpa.conf` into the
-> site's nginx editor and click Save — Forge handles the reload.
-
----
-
-## 8. Get an SSL certificate
-
-DNS must already point `mpa.tomorrow.services` → `3.136.112.231`. Confirm:
-
-```bash
-dig +short mpa.tomorrow.services
-```
-
-Then:
-
-```bash
-sudo certbot --nginx -d mpa.tomorrow.services
-# Pick "redirect HTTP → HTTPS" when prompted.
-```
-
-Certbot auto-renews via systemd timer:
-```bash
-sudo systemctl list-timers | grep certbot
-```
-
-After this, the four URLs in Section 7 should all work over **https**.
-
----
-
-## 9. Smoke test the full pipeline
-
-Open `https://mpa.tomorrow.services/` in a browser. You should see the SDK
-demo page. Click **Start auto-detect case**, then **Start recording**, say
-something like *"adding a composite filling on tooth 14"*, then **Stop recording**.
-
-In a second terminal:
-
-```bash
-ssh forge@3.136.112.231
 sudo journalctl -u mpa-backend -f
 ```
 
-You should see the request land, Whisper transcribe, and Qwen extract fields.
-The page's "Detected" pill should update and the form below should fill in.
+You should see Whisper transcribe, then Qwen extract fields, and the form
+on the page should fill in.
 
 ---
 
-## 10. Hand it off to Seraph
+## 11. Hand off to the Seraph team
 
-Tell the Seraph dev team:
+Tell them:
 
 > The SDK is at **`https://mpa.tomorrow.services/sdk/mpa-sdk.js`**.
-> Drop a script tag on your page:
 >
 > ```html
 > <script src="https://mpa.tomorrow.services/sdk/mpa-sdk.js"></script>
@@ -305,48 +285,82 @@ Tell the Seraph dev team:
 >     token:  'their-auth-token',
 >     userId: 'DR-MEZHER'
 >   });
->   // apiBase defaults to "https://mpa.tomorrow.services/api" — no override needed.
+>   // apiBase defaults to https://mpa.tomorrow.services/api — no override needed
+>   // when loading the SDK from this origin. From a different origin, the SDK
+>   // also defaults to "/api" relative to itself.
 >
->   // Register the empty schemas you want auto-filled:
->   mpa.fetchSchemas('https://your-seraph-host/path/to/schemas-catalog.json');
+>   mpa.fetchSchemas('https://seraph-host/your/schemas-catalog.json');
 >
 >   mpa.onDataReceived((data) => {
->     // data.schema is the same schema you sent, with fields filled in.
+>     // data.schema is the schema you sent, with AI-filled fields.
 >     // data.ai_filled_keys lists which fields the model populated.
->     console.log(data);
 >   });
 >
->   // Start a case, then record:
 >   mpa.startAutoCase();
 >   mpa.startRecording();
->   // ... later:
->   mpa.stopRecording();
+>   // ... later: mpa.stopRecording();
 > </script>
 > ```
 >
-> A working live example is at **`https://mpa.tomorrow.services/`** — view source
-> to see the full integration pattern.
+> Live working example at **https://mpa.tomorrow.services/** — view source.
 >
-> CORS is currently `*` (any origin can call the API). Send me your production
-> origin and I'll tighten it.
+> CORS is `*`. Send me your production origin once you have one and I'll lock
+> it down to that single origin in `backend/main.py`.
 
 ---
 
-## 11. Future updates
+## Future updates
 
 ```bash
 ssh forge@3.136.112.231
 cd /home/forge/mpa
 git pull
 
-# If backend changed:
+# Backend changed?
 cd backend
 source venv/bin/activate
 pip install -r requirements.txt   # only if requirements.txt changed
 sudo systemctl restart mpa-backend
 
-# If sdk/ changed: no restart needed — nginx serves files directly from disk.
+# SDK or demo changed? No restart needed — nginx serves files directly.
+
+# nginx config changed (deploy/forge-site.conf)?
+SITE_ID=$(grep -oP 'forge-conf/\K[0-9]+' \
+    /etc/nginx/sites-available/mpa.tomorrow.services | head -1)
+sudo cp /home/forge/mpa/deploy/forge-site.conf \
+        /etc/nginx/forge-conf/$SITE_ID/site.conf
+sudo nginx -t && sudo systemctl reload nginx
 ```
+
+---
+
+## Gotchas we hit (and the fixes)
+
+These are documented inline in `forge-site.conf` and `nginx-mpa.conf`, but
+collected here for searchability:
+
+1. **`alias` + `index` directive = 500.** The outer Forge server block has
+   `index index.html index.htm;`. nginx APPENDS `index.html` to any `alias`
+   that points at a file, turning `example.html` into `example.htmlindex.html`.
+   Error log: `"...example.htmlindex.html" is not a directory`.
+   **Fix:** use `root` + `try_files` for the root location, not `alias`.
+
+2. **Permission denied (403) on every request.** nginx runs as `www-data`,
+   not `forge`. It needs `x` permission on every parent directory.
+   **Fix:** `chmod o+x /home/forge /home/forge/mpa /home/forge/mpa/sdk`.
+
+3. **`sudo tee <<HEREDOC` mangled in PowerShell.** Pasting a big heredoc
+   through SSH+sudo sometimes truncates mid-stream. **Fix:** write the
+   heredoc to a normal file in `~/` first (no sudo), then `sudo cp` it
+   into place as a single atomic command. Or use `nano` interactively.
+
+4. **`curl ... 2>&1 | head -3`** truncates the actual response body.
+   **Fix:** drop the `2>&1` if you want to see the response — or use `-i`
+   alone and let it print everything.
+
+5. **Forge already provisions SSL.** Don't `certbot --nginx` over Forge's
+   cert paths — go through the Forge dashboard for LetsEncrypt instead.
+   The cert lives under `/etc/nginx/ssl/domains/<a>/<b>/`.
 
 ---
 
@@ -354,23 +368,25 @@ sudo systemctl restart mpa-backend
 
 | Symptom | Where to look |
 |---|---|
-| 502 Bad Gateway on /api/* | `sudo journalctl -u mpa-backend -n 200` — backend crashed |
-| Whisper/HF download stalls | `df -h`, and check `~/.cache/` is writable by `forge` |
-| `ModuleNotFoundError` on startup | `pip install -r requirements.txt` after pull |
+| 500 on `/` | `sudo tail /var/log/nginx/<site-id>-error.log` — usually permissions or the alias+index bug |
+| 502 on `/api/*` | `sudo journalctl -u mpa-backend -n 200` — backend crashed or not running |
+| 403 on everything | Forgot the `chmod o+x` from Section 4 |
+| Whisper or HF download stalls | `df -h` (disk full?), check `~/.cache/` writable |
+| `ModuleNotFoundError` on startup | `pip install -r requirements.txt` not re-run after a pull |
 | Ollama "model not found" | `ollama list`, then `ollama pull qwen3:1.7b` |
-| CORS error in Seraph's browser console | The SDK file *is* served with `Access-Control-Allow-Origin: *`. If you see CORS on `/api/*` calls, FastAPI's CORSMiddleware in `backend/main.py` should be checked (currently `allow_origins=["*"]`) |
-| Big request times out | Bump `proxy_read_timeout` in `nginx-mpa.conf` |
-| Out of memory | Switch `whisper.load_model("medium")` to `"small"` in `backend/main.py` |
-| Demo page works on localhost but not on the server | Check `/var/log/nginx/error.log`; usually a missing file path in the alias directive |
+| CORS error in Seraph's console | `backend/main.py` has `allow_origins=["*"]` — should "just work". If you see CORS errors, paste them to me |
+| Big request times out | Bump `proxy_read_timeout` in `forge-site.conf` |
+| OOM (kernel kills the backend) | `free -h` to confirm; bump server RAM, or swap Whisper-medium for "small" in `backend/main.py` |
 
 ---
 
 ## Files in `deploy/`
 
-| File | Where it ends up | Purpose |
+| File | Use when | Goes where |
 |---|---|---|
-| `nginx-mpa.conf` | `/etc/nginx/sites-available/mpa.tomorrow.services` | nginx server block |
-| `mpa-backend.service` | `/etc/systemd/system/mpa-backend.service` | systemd unit for uvicorn |
-| `DEPLOY.md` | this file | the playbook |
+| `forge-site.conf` | **Forge-managed server (production)** | `/etc/nginx/forge-conf/<site-id>/site.conf` |
+| `nginx-mpa.conf` | Plain nginx (non-Forge) | `/etc/nginx/sites-available/mpa.tomorrow.services` |
+| `mpa-backend.service` | Any server, after Phase 2 | `/etc/systemd/system/mpa-backend.service` |
+| `DEPLOY.md` | Reading | This file |
 
-Plus `backend/requirements.txt` at the project root of `backend/`.
+`backend/requirements.txt` is at the root of `backend/`.
