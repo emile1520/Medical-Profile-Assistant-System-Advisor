@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
-
-const API_BASE = "http://127.0.0.1:8000";
+import MedicalAssistant from "./MedicalAssistantSDK";
 
 const WAKE_VARIANTS = [
   "start recording", "start record", "begin recording",
@@ -42,17 +41,17 @@ function isEmpty(v) {
 
 // ── Single field row ─────────────────────────────────────────────────────────
 function FieldRow({ field, value, onChange }) {
-  const locked       = !!field.locked;
-  const filledByAi   = !!field.filled_by_ai;
-  const required     = !!field.required;
-  const empty        = isEmpty(value);
-  const missingReq   = required && empty && !locked;
+  const locked     = !!field.locked;
+  const filledByAi = !!field.filled_by_ai;
+  const required   = !!field.required;
+  const empty      = isEmpty(value);
+  const missingReq = required && empty && !locked;
 
   let statusBadge = null;
-  if (locked)            statusBadge = <span className="field-badge field-badge--locked">🔒 Locked</span>;
-  else if (filledByAi)   statusBadge = <span className="field-badge field-badge--ai">✅ AI</span>;
-  else if (missingReq)   statusBadge = <span className="field-badge field-badge--required">⚠ Required</span>;
-  else if (!empty)       statusBadge = <span className="field-badge field-badge--ok">●</span>;
+  if (locked)          statusBadge = <span className="field-badge field-badge--locked">🔒 Locked</span>;
+  else if (filledByAi) statusBadge = <span className="field-badge field-badge--ai">✅ AI</span>;
+  else if (missingReq) statusBadge = <span className="field-badge field-badge--required">⚠ Required</span>;
+  else if (!empty)     statusBadge = <span className="field-badge field-badge--ok">●</span>;
 
   const renderInput = () => {
     const disabled = locked;
@@ -209,46 +208,62 @@ export default function Recorder() {
   const [lastHeard,  setLastHeard]  = useState("");
 
   // pipeline phase
-  const [phase, setPhase]             = useState("idle"); // idle | transcribing | review | extracting | form | approving | done
-  const [transcript, setTranscript]   = useState("");
-  const [editedText, setEditedText]   = useState("");
-  const [audioMeta,  setAudioMeta]    = useState(null);
+  const [phase, setPhase]           = useState("idle"); // idle | transcribing | review | extracting | form | approving | done
+  const [transcript, setTranscript] = useState("");
+  const [editedText, setEditedText] = useState("");
+  const [audioMeta,  setAudioMeta]  = useState(null);
 
   // schema + form state
-  const [schema, setSchema]           = useState(null);
-  const [fieldValues, setFieldValues] = useState({});
+  const [schema, setSchema]                   = useState(null);
+  const [fieldValues, setFieldValues]         = useState({});
   const [missingRequired, setMissingRequired] = useState([]);
   const [aiFilledKeys, setAiFilledKeys]       = useState([]);
+  const [detectedProcedure, setDetectedProcedure] = useState(null);
 
-  // mock save result
-  const [apiCall, setApiCall]             = useState(null);
-  const [mockResponse, setMockResponse]   = useState(null);
-  const [confirmation, setConfirmation]   = useState(null);
-  const [apiError, setApiError]           = useState(null);
+  // integration response state
+  const [apiCall, setApiCall]               = useState(null);
+  const [mockResponse, setMockResponse]     = useState(null);
+  const [confirmation, setConfirmation]     = useState(null);
+  const [apiError, setApiError]             = useState(null);
   const [processingTime, setProcessingTime] = useState(null);
-  const [error, setError]                 = useState("");
+  const [error, setError]                   = useState("");
 
   // identity
-  const [userId,   setUserId]   = useState("dr_smith");
-  const [userRole, setUserRole] = useState("user");
+  const [userId, setUserId] = useState("DR1001");
+
+  // SDK session
+  const [sdkReady, setSdkReady]       = useState(false);
+  const [sessionInfo, setSessionInfo] = useState(null);
 
   // history
   const [history, setHistory]         = useState([]);
   const [showHistory, setShowHistory] = useState(false);
 
   // refs
-  const mediaRecorderRef = useRef(null);
-  const audioChunksRef   = useRef([]);
-  const isRecording      = useRef(false);
-  const isDestroyed      = useRef(false);
+  const mediaRecorderRef  = useRef(null);
+  const audioChunksRef    = useRef([]);
+  const isRecording       = useRef(false);
+  const isDestroyed       = useRef(false);
   const wakeRecognizerRef = useRef(null);
   const stopRecognizerRef = useRef(null);
+
+  // ── SDK init — re-runs whenever userId changes
+  useEffect(() => {
+    MedicalAssistant.init({ token: "demo-token", userId });
+    setSdkReady(true);
+    setSessionInfo({
+      userId,
+      connectedAt: new Date().toLocaleTimeString(),
+      environment: "Seraph (Simulated)",
+    });
+  }, [userId]);
 
   // ── reset
   const resetPipeline = useCallback(() => {
     setTranscript(""); setEditedText("");
     setSchema(null); setFieldValues({});
     setMissingRequired([]); setAiFilledKeys([]);
+    setDetectedProcedure(null);
     setApiCall(null); setMockResponse(null);
     setConfirmation(null); setApiError(null);
     setProcessingTime(null); setError("");
@@ -257,8 +272,7 @@ export default function Recorder() {
   // ── history fetch
   const fetchHistory = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/recordings`);
-      const data = await res.json();
+      const data = await MedicalAssistant.getLogs();
       setHistory(data.recordings || []);
     } catch (_) {}
   }, []);
@@ -269,15 +283,8 @@ export default function Recorder() {
   const uploadAudio = useCallback(async () => {
     setPhase("transcribing");
     const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
-    const formData = new FormData();
-    formData.append("file", blob, "recording.webm");
     try {
-      const res = await fetch(`${API_BASE}/upload-audio`, {
-        method: "POST",
-        headers: { "X-User-Id": userId, "X-User-Role": userRole },
-        body: formData,
-      });
-      const data = await res.json();
+      const data = await MedicalAssistant.transcribeAudio(blob);
       if (data.success) {
         setTranscript(data.transcript || "");
         setEditedText(data.transcript || "");
@@ -292,7 +299,7 @@ export default function Recorder() {
       setError("Could not reach the backend on port 8000.");
       setPhase("idle");
     }
-  }, [userId, userRole]);
+  }, []);
 
   // ── Phase 2: send approved text to QWEN → load form
   const sendToQwen = useCallback(async () => {
@@ -300,20 +307,11 @@ export default function Recorder() {
     setPhase("extracting");
     setError("");
     try {
-      const res = await fetch(`${API_BASE}/process-procedure`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-User-Id":    userId,
-          "X-User-Role":  userRole,
-        },
-        body: JSON.stringify({
-          approved_text: editedText,
-          audio_file:    audioMeta?.audio_file ?? null,
-          timestamp:     audioMeta?.timestamp ?? null,
-        }),
+      const data = await MedicalAssistant.processProcedure({
+        approvedText: editedText,
+        audioFile:    audioMeta?.audio_file ?? null,
+        timestamp:    audioMeta?.timestamp  ?? null,
       });
-      const data = await res.json();
 
       if (!data.success) {
         setApiError(data.api_error || { code: "ERROR", message: data.error || "Unknown" });
@@ -331,34 +329,29 @@ export default function Recorder() {
       setFieldValues(initial);
       setMissingRequired(data.missing_required || []);
       setAiFilledKeys(data.ai_filled_keys || []);
+      setDetectedProcedure(data.detected_procedure || null);
       setProcessingTime(data.processing_time_ms ?? null);
       setPhase("form");
     } catch (_) {
       setError("Failed to reach /process-procedure.");
       setPhase("review");
     }
-  }, [editedText, audioMeta, userId, userRole]);
+  }, [editedText, audioMeta]);
 
-  // ── Phase 3: approve form → mock save
+  // ── Phase 3: approve form → simulated integration save
   const approveProcedure = useCallback(async () => {
     setPhase("approving");
     setError(""); setApiError(null);
     try {
-      const res = await fetch(`${API_BASE}/approve-procedure`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-User-Id":    userId,
-          "X-User-Role":  userRole,
-        },
-        body: JSON.stringify({
-          approved_text: editedText,
-          field_values:  fieldValues,
-          audio_file:    audioMeta?.audio_file ?? null,
-          timestamp:     audioMeta?.timestamp ?? null,
-        }),
+      const data = await MedicalAssistant.approveProcedure({
+        approvedText: editedText,
+        fieldValues:  fieldValues,
+        audioFile:    audioMeta?.audio_file ?? null,
+        timestamp:    audioMeta?.timestamp  ?? null,
+        procedureKey: schema?.activeProcedure?.procedureKey
+                   ?? detectedProcedure?.key
+                   ?? null,
       });
-      const data = await res.json();
 
       if (data.success) {
         setApiCall(data.api_call || null);
@@ -376,7 +369,7 @@ export default function Recorder() {
       setError("Failed to reach /approve-procedure.");
       setPhase("form");
     }
-  }, [editedText, fieldValues, audioMeta, userId, userRole, fetchHistory]);
+  }, [editedText, fieldValues, audioMeta, schema, detectedProcedure, fetchHistory]);
 
   // ── Update single field value
   const updateField = useCallback((key, value) => {
@@ -508,18 +501,29 @@ export default function Recorder() {
     <div className="container">
       <div className="card">
 
+        {/* Identity bar */}
         <div className="identity-bar">
           <label>User ID:
-            <input type="text" value={userId} onChange={(e) => setUserId(e.target.value)} className="identity-input" />
-          </label>
-          <label>Role:
-            <select value={userRole} onChange={(e) => setUserRole(e.target.value)} className="identity-select">
-              <option value="user">user</option>
-              <option value="admin">admin</option>
-            </select>
+            <input
+              type="text"
+              value={userId}
+              onChange={(e) => setUserId(e.target.value.toUpperCase())}
+              className="identity-input"
+            />
           </label>
         </div>
 
+        {/* SDK session bar */}
+        {sdkReady && sessionInfo && (
+          <div className="sdk-session-bar">
+            <span className="sdk-dot" /> Connected to Seraph
+            <span className="sdk-meta">
+              User: {sessionInfo.userId} · {sessionInfo.environment} · Session started {sessionInfo.connectedAt}
+            </span>
+          </div>
+        )}
+
+        {/* Wake word status */}
         <div className="wake-status">
           {wakeError ? (
             <span className="wake-pill wake-pill--error">⚠ {wakeError}</span>
@@ -532,12 +536,26 @@ export default function Recorder() {
           )}
         </div>
 
-        {lastHeard && (
-          <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 8 }}>
-            🎤 Last heard: <em>{lastHeard}</em>
+        {/* AI-detected procedure badge */}
+        {detectedProcedure && detectedProcedure.label && (
+          <div className="detected-procedure-banner">
+            <span className="detected-procedure-banner__icon">🧠</span>
+            <span className="detected-procedure-banner__label">
+              Detected procedure:&nbsp;
+              <strong>{detectedProcedure.label}</strong>
+              {detectedProcedure.service && (
+                <span className="detected-procedure-banner__service">
+                  &nbsp;· {detectedProcedure.service}
+                </span>
+              )}
+            </span>
+            {detectedProcedure.auto_detected && (
+              <span className="detected-procedure-banner__tag">auto-detected</span>
+            )}
           </div>
         )}
 
+        {/* Procedure context header */}
         {schema && (
           <div className="procedure-header">
             <div className="procedure-header__row">
@@ -551,9 +569,14 @@ export default function Recorder() {
           </div>
         )}
 
+        {/* Record button */}
         <div className="btn-row">
           {!recording ? (
-            <button className="button start" onClick={startRecording} disabled={phase === "transcribing" || phase === "extracting" || phase === "approving"}>
+            <button
+              className="button start"
+              onClick={startRecording}
+              disabled={phase === "transcribing" || phase === "extracting" || phase === "approving"}
+            >
               🎤 Start Recording
             </button>
           ) : (
@@ -587,8 +610,11 @@ export default function Recorder() {
             {phase === "review" && (
               <div className="review-actions">
                 <button className="button approve" onClick={sendToQwen}>✅ Approve & Extract Fields</button>
-                <button className="button" style={{ background: "#94a3b8", color: "white" }}
-                        onClick={() => setEditedText(transcript)}>↻ Reset</button>
+                <button
+                  className="button"
+                  style={{ background: "#94a3b8", color: "white" }}
+                  onClick={() => setEditedText(transcript)}
+                >↻ Reset</button>
               </div>
             )}
           </div>
@@ -603,9 +629,9 @@ export default function Recorder() {
               <span><strong>{missingRequired.length}</strong> required missing</span>
             </div>
 
-            <FieldSection title="Variants"  fields={fieldsBySection.variants}  values={fieldValues} onChange={updateField} />
-            <FieldSection title="Findings"  fields={fieldsBySection.findings}  values={fieldValues} onChange={updateField} />
-            <FieldSection title="Results"   fields={fieldsBySection.results}   values={fieldValues} onChange={updateField} />
+            <FieldSection title="Variants" fields={fieldsBySection.variants} values={fieldValues} onChange={updateField} />
+            <FieldSection title="Findings" fields={fieldsBySection.findings} values={fieldValues} onChange={updateField} />
+            <FieldSection title="Results"  fields={fieldsBySection.results}  values={fieldValues} onChange={updateField} />
 
             {phase === "form" && (
               <div className="review-actions" style={{ marginTop: 16 }}>
@@ -621,6 +647,7 @@ export default function Recorder() {
           </div>
         )}
 
+        {/* API errors */}
         {apiError && (
           <div className="api-call-banner api-call-banner--error">
             <div className="api-call-banner__title">⚠ {apiError.code}</div>
@@ -633,19 +660,21 @@ export default function Recorder() {
           </div>
         )}
 
+        {/* Seraph API call banner */}
         {apiCall && (
           <div className={`api-call-banner api-call-banner--${apiCall.method.toLowerCase()}`}>
             <div className="api-call-banner__title">
-              🔗 External API Call — <span className="api-call-banner__method">{apiCall.method}</span>
+              🔗 Seraph API Call — <span className="api-call-banner__method">{apiCall.method}</span>
             </div>
             <div className="api-call-banner__message">{apiCall.message}</div>
             <code className="api-call-banner__endpoint">{apiCall.endpoint}</code>
           </div>
         )}
 
+        {/* Seraph integration response */}
         {mockResponse && (
           <div className="result-box mock-response">
-            <div className="result-box__label">🧪 Simulated Backend Response</div>
+            <div className="result-box__label">🔗 Seraph Integration Response</div>
             <div className="mock-response__meta">
               {mockResponse.source} · status {mockResponse.status_code} · {mockResponse.status}
             </div>
@@ -653,6 +682,7 @@ export default function Recorder() {
           </div>
         )}
 
+        {/* Confirmation */}
         {confirmation && (
           <div className="result-box confirmation-box">
             <div className="result-box__label">✅ Confirmation</div>
@@ -669,9 +699,13 @@ export default function Recorder() {
           <div className="processing-time">⏱ Processed in {processingTime} ms</div>
         )}
 
+        {/* History */}
         <div style={{ marginTop: 28 }}>
-          <button className="button" style={{ backgroundColor: "#6c7a89", color: "white" }}
-                  onClick={() => { setShowHistory((v) => !v); if (!showHistory) fetchHistory(); }}>
+          <button
+            className="button"
+            style={{ backgroundColor: "#6c7a89", color: "white" }}
+            onClick={() => { setShowHistory((v) => !v); if (!showHistory) fetchHistory(); }}
+          >
             {showHistory ? "Hide History" : "Show Recording History"}
           </button>
         </div>
@@ -691,6 +725,7 @@ export default function Recorder() {
             )}
           </div>
         )}
+
       </div>
     </div>
   );

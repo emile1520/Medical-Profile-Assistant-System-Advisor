@@ -1,0 +1,180 @@
+{
+  "activeProcedure": {
+    "effectiveActId": 9305,
+    "procedureKey": "composite_filling",
+    "status": "in_progress",
+    "service": { "key": "restorative", "label": "Restorative Dentistry" },
+    "offering": {
+      "id": 612,
+      "label": "Composite Filling",
+      "localActKey": "compositeFilling",
+      "description": "Tooth-colored resin composite restoration to repair caries or fracture."
+    },
+    "patientMiniState": {
+      "patientId": 1547,
+      "age": 19,
+      "sex": "female",
+      "medical": {
+        "smokingStatus": { "value": "non_smoker", "label": "Non-smoker" },
+        "diabetesStatus": { "value": "not_diabetic", "label": "Not diabetic" },
+        "allergies": { "value": [] }
+      }
+    },
+    "caseContext": {
+      "caseId": 522,
+      "scope": { "type": "tooth", "value": "14", "label": "Tooth 14" },
+      "clinicalGoal": "restore_tooth_structure"
+    },
+    "detectionHints": {
+      "keywords": ["composite", "filling", "restoration", "caries", "cavity", "bonding", "etch", "light cure", "shade", "polish", "class i", "class ii"],
+      "examples": [
+        "Class II composite filling on tooth 14, mesial and occlusal surfaces, shade A2",
+        "Placed composite restoration, light cured in two layers, polish completed"
+      ]
+    },
+    "variants": [
+      {
+        "key": "anatomy.tooth",
+        "label": "Tooth",
+        "fieldType": "tooth_picker",
+        "required": true,
+        "locked": true,
+        "value": "14",
+        "description": "Tooth being restored."
+      },
+      {
+        "key": "restoration.surfaces",
+        "label": "Surfaces treated",
+        "fieldType": "multi_select",
+        "required": true,
+        "value": [],
+        "options": [
+          {"value": "mesial", "label": "Mesial (M)"},
+          {"value": "occlusal", "label": "Occlusal (O)"},
+          {"value": "distal", "label": "Distal (D)"},
+          {"value": "buccal", "label": "Buccal (B)"},
+          {"value": "lingual", "label": "Lingual (L)"}
+        ],
+        "description": "Tooth surfaces involved in the restoration."
+      },
+      {
+        "key": "restoration.cavityClass",
+        "label": "Cavity class (Black)",
+        "fieldType": "select",
+        "required": false,
+        "value": null,
+        "options": [
+          {"value": "class_i", "label": "Class I"},
+          {"value": "class_ii", "label": "Class II"},
+          {"value": "class_iii", "label": "Class III"},
+          {"value": "class_iv", "label": "Class IV"},
+          {"value": "class_v", "label": "Class V"}
+        ],
+        "description": "G.V. Black cavity classification."
+      },
+      {
+        "key": "restoration.shade",
+        "label": "Shade selected",
+        "fieldType": "select",
+        "required": false,
+        "value": null,
+        "options": [
+          {"value": "A1", "label": "A1"},
+          {"value": "A2", "label": "A2"},
+          {"value": "A3", "label": "A3"},
+          {"value": "A3.5", "label": "A3.5"},
+          {"value": "B1", "label": "B1"},
+          {"value": "B2", "label": "B2"}
+        ],
+        "description": "Vita classical shade selected to match adjacent teeth."
+      }
+    ],
+    "findings": [
+      {
+        "key": "caries.depth",
+        "label": "Caries depth",
+        "fieldType": "select",
+        "required": true,
+        "value": null,
+        "options": [
+          {"value": "enamel_only", "label": "Enamel only"},
+          {"value": "into_dentin", "label": "Into dentin"},
+          {"value": "near_pulp", "label": "Deep, close to pulp"},
+          {"value": "pulpal_exposure", "label": "Pulpal exposure"}
+        ],
+        "description": "Extent of the carious lesion."
+      },
+      {
+        "key": "caries.pulpProtectionNeeded",
+        "label": "Pulp protection needed",
+        "fieldType": "boolean",
+        "required": false,
+        "value": null,
+        "description": "Whether a liner or base was indicated for deep lesions."
+      }
+    ],
+    "results": {
+      "schemaKey": "restorative.compositeFillingResult",
+      "fields": [
+        {
+          "key": "bonding_agent_used",
+          "label": "Bonding agent",
+          "fieldType": "select",
+          "required": false,
+          "value": null,
+          "options": [
+            {"value": "total_etch", "label": "Total-etch"},
+            {"value": "self_etch", "label": "Self-etch"},
+            {"value": "universal", "label": "Universal adhesive"}
+          ],
+          "description": "Adhesive system used."
+        },
+        {
+          "key": "cure_method",
+          "label": "Cure method",
+          "fieldType": "select",
+          "required": false,
+          "value": null,
+          "options": [
+            {"value": "light_cure", "label": "Light cure"},
+            {"value": "self_cure", "label": "Self cure"},
+            {"value": "dual_cure", "label": "Dual cure"}
+          ],
+          "description": "Polymerization method."
+        },
+        {
+          "key": "layers_placed",
+          "label": "Number of composite layers",
+          "fieldType": "number",
+          "required": false,
+          "value": null,
+          "description": "Incremental layers placed during build-up."
+        },
+        {
+          "key": "polish_completed",
+          "label": "Polish completed",
+          "fieldType": "boolean",
+          "required": true,
+          "value": null,
+          "description": "Whether final polishing was completed this visit."
+        },
+        {
+          "key": "occlusion_checked",
+          "label": "Occlusion checked",
+          "fieldType": "boolean",
+          "required": true,
+          "value": null,
+          "description": "Whether the bite was verified after placement."
+        },
+        {
+          "key": "doctor_notes",
+          "label": "Clinical notes",
+          "fieldType": "textarea",
+          "required": false,
+          "value": "",
+          "description": "Free clinical narrative."
+        }
+      ]
+    }
+  }
+}

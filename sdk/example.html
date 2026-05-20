@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>MPA SDK — Integration Example</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body {
+      font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+      background: #f1faff;
+      color: #0a1f3a;
+      max-width: 880px;
+      margin: 40px auto;
+      padding: 0 20px;
+      line-height: 1.55;
+    }
+    h1 { font-size: 26px; margin-bottom: 4px; }
+    .sub { color: #475569; font-size: 14px; margin-bottom: 24px; }
+    .card {
+      background: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 14px;
+      padding: 24px;
+      margin-bottom: 18px;
+      box-shadow: 0 6px 20px -8px rgba(10,25,41,0.1);
+    }
+    .card h2 { margin: 0 0 6px 0; font-size: 18px; }
+    .card .desc { font-size: 13px; color: #64748b; margin-bottom: 14px; }
+    button {
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      padding: 10px 18px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      margin-right: 8px;
+    }
+    button:disabled {
+      background: #cbd5e1 !important;
+      color: #64748b !important;
+      cursor: not-allowed;
+      opacity: 0.6;
+    }
+    .btn-primary { background: #06b6d4; color: white; }
+    .btn-primary:hover:not(:disabled) { background: #0e7490; }
+    .btn-stop    { background: #ef4444; color: white; }
+    .btn-stop:hover:not(:disabled)    { background: #b91c1c; }
+    .btn-ghost   { background: #e2e8f0; color: #1e293b; }
+    .state-pill {
+      display: inline-block; padding: 4px 12px; border-radius: 999px;
+      font-size: 12px; font-weight: 600;
+      background: #f1f5f9; color: #475569;
+    }
+    .detected-badge {
+      display: inline-block; padding: 4px 10px; border-radius: 999px;
+      font-size: 12px; font-weight: 600;
+      background: #ccfbf1; color: #115e59; border: 1px solid #5eead4;
+      margin-left: 8px;
+    }
+    .detected-badge.pending { background: #f1f5f9; color: #94a3b8; border-color: #e2e8f0; }
+    .field { display: flex; gap: 10px; align-items: center; margin-bottom: 6px; font-size: 14px; }
+    .field-label { width: 220px; color: #475569; font-weight: 500; }
+    .field-value {
+      flex: 1; padding: 4px 8px; background: #f8fafc;
+      border: 1px solid #e2e8f0; border-radius: 6px;
+      font-family: monospace; font-size: 13px;
+    }
+    .field-value.empty { color: #94a3b8; font-style: italic; }
+    .field-value.ai { background: #ccfbf1; border-color: #5eead4; }
+    .field-value.locked { background: #fef9c3; border-color: #fde68a; }
+    pre {
+      background: #0f172a; color: #94f3d7; padding: 14px;
+      border-radius: 8px; font-size: 12px; overflow-x: auto; max-height: 360px;
+    }
+    .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .log-line { font-family: monospace; font-size: 12px; color: #475569; margin: 2px 0; }
+    .hint {
+      background: #ecfeff; border: 1px dashed #67e8f9; padding: 10px 14px;
+      border-radius: 8px; font-size: 13px; color: #155e75; margin-top: 12px;
+    }
+    .hint code { background: rgba(15,118,110,0.08); padding: 1px 4px; border-radius: 3px; }
+    .hint ul { margin: 6px 0 0; padding-left: 18px; }
+    .hint li { margin-bottom: 4px; }
+  </style>
+</head>
+<body>
+
+  <h1>MPA SDK — Integration Example (schemas fetched from Seraph)</h1>
+  <p class="sub">
+    No schemas are hard-coded in this page. On startup the SDK fetches them from a mock
+    Seraph endpoint, then auto-detects which one matches whatever the dentist dictates.
+    Open <code>mock-seraph/schemas-catalog.json</code> in your browser — that's the
+    only place the schema data lives.
+  </p>
+
+  <!-- ── Mock patient context bar ──────────────────────────────────────── -->
+  <div class="card">
+    <h2>Auto-detect dictation</h2>
+    <div class="desc">
+      Three procedure schemas are registered with the SDK on page load. After you stop recording,
+      the SDK scores the transcript against each schema's keywords and picks the winner.
+    </div>
+
+    <div class="row">
+      <span>State: <span id="state-pill" class="state-pill">idle</span></span>
+      <span>Detected: <span id="detected-pill" class="detected-badge pending">— none yet —</span></span>
+    </div>
+
+    <div class="row" style="margin-top: 14px;">
+      <button id="btn-start-case" class="btn-primary">Start auto-detect case</button>
+      <button id="btn-start-rec"  class="btn-primary"  disabled>🎙 Start recording</button>
+      <button id="btn-stop-rec"   class="btn-stop"     disabled>⏹ Stop recording</button>
+      <button id="btn-listen"     class="btn-ghost"    disabled>👂 Voice activation</button>
+    </div>
+
+  </div>
+
+  <!-- ── The Seraph-side form (rendered dynamically from the schema) ───── -->
+  <div class="card">
+    <h2>Seraph's procedure form</h2>
+    <div class="desc">
+      Rendered from whichever schema the SDK auto-picked. <span style="color:#0e7490">Teal</span> =
+      AI-filled. <span style="color:#a16207">Yellow</span> = locked (came from the plan).
+    </div>
+    <div id="form-container">
+      <div class="field"><div class="field-label" style="color:#94a3b8;">Awaiting dictation…</div>
+        <div class="field-value empty">— click <em>Start auto-detect case</em> then record —</div></div>
+    </div>
+  </div>
+
+  <!-- ── Live log + raw response ──────────────────────────────────────── -->
+  <div class="card">
+    <h2>SDK events</h2>
+    <div id="log"></div>
+    <details style="margin-top: 12px">
+      <summary style="cursor:pointer; font-size: 13px; color: #0e7490;">Show raw response</summary>
+      <pre id="raw-response">(no data yet)</pre>
+    </details>
+  </div>
+
+  <!-- ── The SDK ──────────────────────────────────────────────────────── -->
+  <!-- Absolute path so this page works whether served at / or /sdk/example.html -->
+  <script src="/sdk/mpa-sdk.js"></script>
+
+  <script>
+    // ════════════════════════════════════════════════════════════════════
+    // No schemas in this file — they live at the Seraph mock endpoint below.
+    // ════════════════════════════════════════════════════════════════════
+    const SERAPH_SCHEMAS_URL = '/mock-seraph/schemas-catalog.json';
+
+    // The SDK defaults to apiBase '/api' (same origin → mpa.tomorrow.services),
+    // so no apiBase override is needed in production. For local dev, override:
+    //   apiBase: 'http://127.0.0.1:8000'
+    const mpa = MPA.init({
+      token:   'demo-token-from-seraph-auth',
+      userId:  'DR-MEZHER'
+    });
+
+    // The fetch is async. We disable the "Start case" button until it resolves.
+    document.getElementById('btn-start-case').disabled = true;
+    mpa.fetchSchemas(SERAPH_SCHEMAS_URL)
+      .then((schemasMap) => {
+        const keys = Object.keys(schemasMap);
+        log('📥 Fetched ' + keys.length + ' schemas from Seraph: ' + keys.join(', '));
+        document.getElementById('btn-start-case').disabled = false;
+      })
+      .catch((err) => {
+        log('❌ Could not fetch schemas: ' + err.message);
+      });
+
+    // ── Helpers ────────────────────────────────────────────────────────
+    function flattenSchema(schema) {
+      const p = (schema && schema.activeProcedure) || {};
+      return []
+        .concat(p.variants || [])
+        .concat(p.findings || [])
+        .concat((p.results && p.results.fields) || []);
+    }
+    function renderForm(schema, aiKeys) {
+      const container = document.getElementById('form-container');
+      container.innerHTML = '';
+      const aiSet = new Set(aiKeys || []);
+      flattenSchema(schema).forEach((field) => {
+        const row = document.createElement('div');
+        row.className = 'field';
+
+        const label = document.createElement('div');
+        label.className   = 'field-label';
+        label.textContent = field.label + (field.required ? ' *' : '') + ':';
+
+        const value = document.createElement('div');
+        value.className = 'field-value';
+        const v = field.value;
+        const isEmpty = v === null || v === undefined || v === '' ||
+                        (Array.isArray(v) && v.length === 0);
+
+        if (isEmpty) {
+          value.textContent = '— not filled —';
+          value.classList.add('empty');
+        } else {
+          let text;
+          if (Array.isArray(v)) text = v.join(', ');
+          else if (typeof v === 'boolean') text = v ? 'true' : 'false';
+          else text = String(v) + (field.unit ? ' ' + field.unit : '');
+          value.textContent = text;
+          if (field.locked) value.classList.add('locked');
+          else if (aiSet.has(field.key)) value.classList.add('ai');
+        }
+
+        row.appendChild(label);
+        row.appendChild(value);
+        container.appendChild(row);
+      });
+    }
+    function log(msg) {
+      const line = document.createElement('div');
+      line.className   = 'log-line';
+      line.textContent = '[' + new Date().toLocaleTimeString() + '] ' + msg;
+      document.getElementById('log').appendChild(line);
+    }
+
+    // ── SDK callbacks ──────────────────────────────────────────────────
+    mpa.onProcedureDetected((det) => {
+      const pill = document.getElementById('detected-pill');
+      pill.textContent = det.label + '  (score ' + det.score + ')';
+      pill.classList.remove('pending');
+      log('🎯 Auto-detected: ' + det.label + ' [key=' + det.key +
+          ', score=' + det.score + ', runner-up=' + det.runnerUpScore + ']');
+    });
+    mpa.onDataReceived((data) => {
+      log('✅ Data received from MPA backend');
+      document.getElementById('raw-response').textContent = JSON.stringify(data, null, 2);
+      renderForm(data.schema, data.ai_filled_keys);
+    });
+    mpa.onTranscript((t) => log('📝 Transcript: "' + t.text + '"'));
+    mpa.onError((err)    => log('⚠️ Error [' + err.code + ']: ' + err.message));
+    mpa.onStateChange((s) => {
+      document.getElementById('state-pill').textContent = s;
+    });
+    mpa.onWakeHeard((phrase) => log('🎤 Heard: "' + phrase + '"  (say "start recording" to begin)'));
+
+    // ── Wire up the UI ─────────────────────────────────────────────────
+    document.getElementById('btn-start-case').addEventListener('click', () => {
+      mpa.startAutoCase();
+      const candidates = Object.keys(mpa._schemas || {}).join(', ');
+      log('🩺 Auto-detect case started — candidates: ' + candidates);
+      const pill = document.getElementById('detected-pill');
+      pill.textContent = '— awaiting dictation —';
+      pill.classList.add('pending');
+      document.getElementById('btn-start-rec').disabled = false;
+      document.getElementById('btn-listen').disabled    = false;
+    });
+    document.getElementById('btn-start-rec').addEventListener('click', () => {
+      mpa.startRecording();
+      document.getElementById('btn-stop-rec').disabled  = false;
+      document.getElementById('btn-start-rec').disabled = true;
+    });
+    document.getElementById('btn-stop-rec').addEventListener('click', () => {
+      mpa.stopRecording();
+      document.getElementById('btn-stop-rec').disabled  = true;
+      document.getElementById('btn-start-rec').disabled = false;
+    });
+    document.getElementById('btn-listen').addEventListener('click', () => {
+      mpa.startListening();
+      log('👂 Voice activation on — say "start recording" to begin');
+    });
+
+    log('SDK loaded · version ' + MPA.version + ' · fetching schemas from Seraph…');
+  </script>
+
+</body>
+</html>

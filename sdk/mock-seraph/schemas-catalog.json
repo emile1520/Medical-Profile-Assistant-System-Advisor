@@ -1,0 +1,256 @@
+{
+  "composite_filling": {
+    "label": "Composite Filling",
+    "patientId": "PT-44213",
+    "keywords": [
+      "composite", "filling", "restoration", "shade",
+      "occlusal", "mesial", "distal", "buccal", "lingual",
+      "caries", "cavity", "light cure", "polish", "class i", "class ii"
+    ],
+    "schema": {
+      "activeProcedure": {
+        "effectiveActId": 77001,
+        "procedureKey": "seraph_composite_demo",
+        "status": "in_progress",
+        "service":  { "key": "restorative", "label": "Restorative Dentistry" },
+        "offering": { "id": 612, "label": "Composite Filling",
+                      "description": "Tooth-coloured composite restoration." },
+        "patientMiniState": { "patientId": "PT-44213", "age": 31, "sex": "female",
+                              "medical": { "allergies": { "value": [] } } },
+        "caseContext": { "caseId": 9001,
+                         "scope": { "type": "tooth", "value": "14", "label": "Tooth 14" },
+                         "clinicalGoal": "restore_tooth_structure" },
+        "variants": [
+          { "key": "restoration.surfaces", "label": "Surfaces treated",
+            "fieldType": "multi_select", "required": true, "value": [],
+            "options": [
+              { "value": "mesial",   "label": "Mesial" },
+              { "value": "occlusal", "label": "Occlusal" },
+              { "value": "distal",   "label": "Distal" },
+              { "value": "buccal",   "label": "Buccal" },
+              { "value": "lingual",  "label": "Lingual" }
+            ],
+            "description": "Tooth surfaces involved." },
+          { "key": "restoration.cavityClass", "label": "Cavity class",
+            "fieldType": "select", "required": false, "value": null,
+            "options": [
+              { "value": "class_i",   "label": "Class I" },
+              { "value": "class_ii",  "label": "Class II" },
+              { "value": "class_iii", "label": "Class III" }
+            ],
+            "description": "G.V. Black classification." },
+          { "key": "restoration.shade", "label": "Shade",
+            "fieldType": "select", "required": false, "value": null,
+            "options": [
+              { "value": "A1", "label": "A1" }, { "value": "A2", "label": "A2" },
+              { "value": "A3", "label": "A3" }, { "value": "B1", "label": "B1" }
+            ],
+            "description": "Vita classical shade." }
+        ],
+        "findings": [
+          { "key": "caries.depth", "label": "Caries depth",
+            "fieldType": "select", "required": true, "value": null,
+            "options": [
+              { "value": "enamel_only",     "label": "Enamel only" },
+              { "value": "into_dentin",     "label": "Into dentin" },
+              { "value": "near_pulp",       "label": "Deep, close to pulp" },
+              { "value": "pulpal_exposure", "label": "Pulpal exposure" }
+            ],
+            "description": "Extent of the carious lesion." }
+        ],
+        "results": {
+          "schemaKey": "restorative.compositeFillingResult",
+          "fields": [
+            { "key": "cure_method", "label": "Cure method",
+              "fieldType": "select", "required": false, "value": null,
+              "options": [
+                { "value": "light_cure", "label": "Light cure" },
+                { "value": "self_cure",  "label": "Self cure" }
+              ],
+              "description": "Polymerisation method." },
+            { "key": "polish_completed", "label": "Polish completed",
+              "fieldType": "boolean", "required": true, "value": null,
+              "description": "Whether final polish was done." },
+            { "key": "doctor_notes", "label": "Clinical notes",
+              "fieldType": "textarea", "required": false, "value": "",
+              "description": "Free clinical narrative." }
+          ]
+        }
+      }
+    }
+  },
+
+  "root_canal": {
+    "label": "Root Canal Treatment",
+    "patientId": "PT-1802",
+    "keywords": [
+      "root canal", "endodontic", "pulp", "pulpitis", "necrotic",
+      "obturation", "gutta percha", "canals", "working length",
+      "apical", "irrigation", "rubber dam", "mesiobuccal", "mesiolingual", "palatal"
+    ],
+    "schema": {
+      "activeProcedure": {
+        "effectiveActId": 9124,
+        "procedureKey": "root_canal",
+        "status": "in_progress",
+        "service":  { "key": "endodontics", "label": "Endodontics" },
+        "offering": { "id": 441, "label": "Root Canal Treatment",
+                      "description": "Endodontic treatment to clean, shape, disinfect, and obturate the root canal system." },
+        "patientMiniState": { "patientId": "PT-1802", "age": 42, "sex": "female",
+                              "medical": { "allergies": { "value": ["penicillin"] } } },
+        "caseContext": { "caseId": 301,
+                         "scope": { "type": "tooth", "value": "36", "label": "Tooth 36" },
+                         "clinicalGoal": "preserve_tooth" },
+        "variants": [
+          { "key": "anatomy.tooth", "label": "Tooth",
+            "fieldType": "tooth_picker", "required": true, "locked": true, "value": "36",
+            "description": "Locked from the approved plan." },
+          { "key": "endo.treatmentExtent", "label": "Treatment extent",
+            "fieldType": "select", "required": true, "value": null,
+            "options": [
+              { "value": "complete_root_canal_treatment", "label": "Complete RCT" },
+              { "value": "partial_or_emergency_stage",    "label": "Partial / emergency stage" }
+            ],
+            "description": "Whether the doctor is completing the full RCT or only a staged/emergency portion." },
+          { "key": "clinical.isolationMethod", "label": "Isolation method",
+            "fieldType": "select", "required": false, "value": null,
+            "options": [
+              { "value": "rubber_dam",                            "label": "Rubber dam" },
+              { "value": "non_rubber_dam_other_documented_exception", "label": "No rubber dam, documented exception" },
+              { "value": "not_recorded",                          "label": "Not recorded" }
+            ],
+            "description": "How the field was isolated." }
+        ],
+        "findings": [
+          { "key": "endo.pulpStatus", "label": "Pulp status",
+            "fieldType": "select", "required": true, "value": null,
+            "options": [
+              { "value": "normal_pulp",          "label": "Normal pulp" },
+              { "value": "reversible_pulpitis",  "label": "Reversible pulpitis" },
+              { "value": "irreversible_pulpitis","label": "Irreversible pulpitis" },
+              { "value": "necrotic_pulp",        "label": "Necrotic pulp" }
+            ],
+            "description": "Pulpal diagnosis." },
+          { "key": "endo.apicalStatus", "label": "Apical status",
+            "fieldType": "select", "required": true, "value": null,
+            "options": [
+              { "value": "normal_apical_tissues",            "label": "Normal apical tissues" },
+              { "value": "symptomatic_apical_periodontitis", "label": "Symptomatic apical periodontitis" },
+              { "value": "asymptomatic_apical_periodontitis","label": "Asymptomatic apical periodontitis" },
+              { "value": "acute_apical_abscess",             "label": "Acute apical abscess" }
+            ],
+            "description": "Periapical diagnosis." },
+          { "key": "endo.percussionTenderness", "label": "Percussion tenderness",
+            "fieldType": "boolean", "required": false, "value": null,
+            "description": "Tender to percussion." }
+        ],
+        "results": {
+          "schemaKey": "endo.rootCanalTreatmentResult",
+          "fields": [
+            { "key": "canals_treated", "label": "Canals treated",
+              "fieldType": "multi_select", "required": true, "value": [],
+              "options": [
+                { "value": "mesiobuccal",  "label": "MB" },
+                { "value": "mesiolingual", "label": "ML" },
+                { "value": "distal",       "label": "D" },
+                { "value": "distobuccal",  "label": "DB" },
+                { "value": "palatal",      "label": "P" }
+              ],
+              "description": "Canals actually negotiated, shaped, and treated." },
+            { "key": "working_length_mm", "label": "Working length",
+              "fieldType": "number", "unit": "mm", "required": false, "value": null,
+              "description": "Measured working length." },
+            { "key": "obturation_completed", "label": "Obturation completed",
+              "fieldType": "boolean", "required": true, "value": null,
+              "description": "Whether final canal obturation was completed in this visit." },
+            { "key": "doctor_notes", "label": "Clinical notes",
+              "fieldType": "textarea", "required": false, "value": "",
+              "description": "Free clinical narrative." }
+          ]
+        }
+      }
+    }
+  },
+
+  "extraction": {
+    "label": "Tooth Extraction",
+    "patientId": "PT-2034",
+    "keywords": [
+      "extraction", "extract", "remove tooth", "pulled", "surgical extraction",
+      "wisdom tooth", "sutures", "stitches", "forceps", "elevator",
+      "hemostasis", "nerve block", "infiltration", "mobility"
+    ],
+    "schema": {
+      "activeProcedure": {
+        "effectiveActId": 9201,
+        "procedureKey": "extraction",
+        "status": "in_progress",
+        "service":  { "key": "oral_surgery", "label": "Oral Surgery" },
+        "offering": { "id": 502, "label": "Tooth Extraction",
+                      "description": "Simple or surgical removal of a non-restorable or impacted tooth." },
+        "patientMiniState": { "patientId": "PT-2034", "age": 28, "sex": "male",
+                              "medical": { "allergies": { "value": [] } } },
+        "caseContext": { "caseId": 415,
+                         "scope": { "type": "tooth", "value": "18", "label": "Tooth 18 (upper right third molar)" },
+                         "clinicalGoal": "remove_non_restorable" },
+        "variants": [
+          { "key": "anatomy.tooth", "label": "Tooth",
+            "fieldType": "tooth_picker", "required": true, "locked": true, "value": "18",
+            "description": "Locked from the treatment plan." },
+          { "key": "extraction.type", "label": "Extraction type",
+            "fieldType": "select", "required": true, "value": null,
+            "options": [
+              { "value": "simple",   "label": "Simple extraction" },
+              { "value": "surgical", "label": "Surgical extraction" }
+            ],
+            "description": "Simple (forceps/elevator) or surgical (flap, bone removal, sectioning)." },
+          { "key": "anesthesia.type", "label": "Anesthesia",
+            "fieldType": "select", "required": true, "value": null,
+            "options": [
+              { "value": "local_infiltration", "label": "Local infiltration" },
+              { "value": "nerve_block",        "label": "Nerve block" },
+              { "value": "general",            "label": "General anesthesia" }
+            ],
+            "description": "Type of anesthesia administered." }
+        ],
+        "findings": [
+          { "key": "extraction.mobilityGrade", "label": "Mobility grade",
+            "fieldType": "select", "required": false, "value": null,
+            "options": [
+              { "value": "0", "label": "Grade 0 — no mobility" },
+              { "value": "1", "label": "Grade 1 — slight" },
+              { "value": "2", "label": "Grade 2 — moderate" },
+              { "value": "3", "label": "Grade 3 — severe" }
+            ],
+            "description": "Pre-extraction tooth mobility." },
+          { "key": "extraction.infectionPresent", "label": "Infection present",
+            "fieldType": "boolean", "required": false, "value": null,
+            "description": "Visible signs of infection at extraction site." }
+        ],
+        "results": {
+          "schemaKey": "surgery.extractionResult",
+          "fields": [
+            { "key": "extraction_completed", "label": "Extraction completed",
+              "fieldType": "boolean", "required": true, "value": null,
+              "description": "Whether the tooth was successfully removed in full." },
+            { "key": "hemostasis_achieved", "label": "Hemostasis achieved",
+              "fieldType": "boolean", "required": true, "value": null,
+              "description": "Whether bleeding was controlled before the patient was dismissed." },
+            { "key": "sutures_placed", "label": "Sutures placed",
+              "fieldType": "boolean", "required": false, "value": null,
+              "description": "Whether sutures were placed at the extraction site." },
+            { "key": "sutures_count", "label": "Number of sutures",
+              "fieldType": "number", "unit": "stitches", "required": false, "value": null,
+              "description": "Count of sutures placed." },
+            { "key": "post_op_instructions_given", "label": "Post-op instructions given",
+              "fieldType": "boolean", "required": true, "value": null,
+              "description": "Whether post-extraction care instructions were provided." },
+            { "key": "doctor_notes", "label": "Clinical notes",
+              "fieldType": "textarea", "required": false, "value": "",
+              "description": "Free clinical narrative." }
+          ]
+        }
+      }
+    }
+  }
+}

@@ -12,9 +12,10 @@ from database import (
     init_db, insert_recording, get_all_recordings,
     get_recordings_by_user, get_recordings_by_date,
 )
-from llm import extract_procedure_fields_qwen
+from llm import extract_procedure_fields_qwen, detect_procedure_type_qwen
 from procedure_schema import (
-    get_sample_procedure, merge_qwen_values, compute_missing_required,
+    get_sample_procedure, get_procedure_by_key, list_procedures,
+    merge_qwen_values, compute_missing_required,
     validate_required_values, flatten_fields,
 )
 
@@ -158,9 +159,17 @@ async def process_procedure(
         print(f"\n=== /process-procedure user={x_user_id} role={x_user_role} ===")
         print(f"Text: {text}")
 
-        # Load fresh schema, run QWEN
-        schema = get_sample_procedure()
-        qwen   = extract_procedure_fields_qwen(text, schema)
+        # Step 1: detect which procedure type the dictation matches
+        procedures   = list_procedures()
+        detection    = detect_procedure_type_qwen(text, procedures)
+        detected_key = detection.get("key")
+        print(f"Detected procedure: {detected_key!r} (from {len(procedures)} candidates)")
+
+        # Step 2: load the matching schema (falls back to default if detection failed)
+        schema = get_procedure_by_key(detected_key) if detected_key else get_sample_procedure()
+
+        # Step 3: extract fields against THAT schema
+        qwen = extract_procedure_fields_qwen(text, schema)
         print(f"QWEN extracted: {qwen['fields']}")
 
         # Merge QWEN values into schema (skips locked fields)
@@ -182,9 +191,18 @@ async def process_procedure(
             result_status="awaiting_approval",
         )
 
+        proc_obj = merged_schema.get("activeProcedure", {})
         return {
             "success":            True,
             "approved_text":      text,
+            "detected_procedure": {
+                "key":           detected_key,
+                "label":         proc_obj.get("offering", {}).get("label", ""),
+                "service":       proc_obj.get("service", {}).get("label", ""),
+                "auto_detected": detected_key is not None,
+                "candidates":    [{"key": p["key"], "label": p["label"]} for p in procedures],
+                "detection_raw": detection.get("raw", ""),
+            },
             "schema":             merged_schema,
             "ai_filled_keys":     ai_filled_keys,
             "missing_required":   missing_required,
@@ -206,6 +224,7 @@ class ApproveProcedureBody(BaseModel):
     field_values:  Dict[str, Any]
     audio_file:    Optional[str] = None
     timestamp:     Optional[str] = None
+    procedure_key: Optional[str] = None
 
 
 @app.post("/approve-procedure")
@@ -225,8 +244,8 @@ async def approve_procedure(
                     {"code": "BAD_ROLE", "message": f"Invalid role '{x_user_role}'."},
                     "processing_time_ms": int((time.time() - start_time) * 1000)}
 
-        # Validate required fields
-        missing = validate_required_values(body.field_values or {})
+        # Validate required fields against the correct schema
+        missing = validate_required_values(body.field_values or {}, body.procedure_key)
         if missing:
             return {"success": False,
                     "api_error": {
@@ -236,8 +255,8 @@ async def approve_procedure(
                     },
                     "processing_time_ms": int((time.time() - start_time) * 1000)}
 
-        # Build mock API call + response
-        schema   = get_sample_procedure()
+        # Build mock API call + response using the matching schema
+        schema   = get_procedure_by_key(body.procedure_key) if body.procedure_key else get_sample_procedure()
         act_id   = schema["activeProcedure"]["effectiveActId"]
         api_call = {
             "method":   "PUT",
@@ -287,7 +306,101 @@ async def approve_procedure(
                 "processing_time_ms": int((time.time() - start_time) * 1000)}
 
 
-# ── Logs ───────────────────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+# SDK ENDPOINT — used by external integrators (e.g. Seraph) via MPA SDK.
+# Accepts a client-provided procedure schema and returns it filled by Qwen.
+# ══════════════════════════════════════════════════════════════════════════════
+class SdkProcessBody(BaseModel):
+    text:       str
+    schema:     Dict[str, Any]
+    patient_id: Optional[str] = None
+    audio_file: Optional[str] = None
+    timestamp:  Optional[str] = None
+
+
+@app.post("/sdk/process-procedure")
+async def sdk_process_procedure(
+    body: SdkProcessBody,
+    x_user_id:   str = Header(default="sdk_user"),
+    x_user_role: str = Header(default="user"),
+    authorization: Optional[str] = Header(default=None),
+):
+    """Client-provided schema entry point. Seraph sends text + schema; we fill it."""
+    import copy as _copy
+    start_time = time.time()
+    try:
+        if not authorization:
+            return {"success": False, "api_error":
+                    {"code": "NO_TOKEN", "message": "Missing Authorization header."},
+                    "processing_time_ms": int((time.time() - start_time) * 1000)}
+
+        text  = sanitize_transcript(body.text or "")
+        v_err = validate_transcript(text)
+        if v_err:
+            return {"success": False, "approved_text": text, "api_error": v_err,
+                    "processing_time_ms": int((time.time() - start_time) * 1000)}
+
+        if not body.schema or "activeProcedure" not in body.schema:
+            return {"success": False, "api_error":
+                    {"code": "BAD_SCHEMA",
+                     "message": "schema must contain an 'activeProcedure' object."},
+                    "processing_time_ms": int((time.time() - start_time) * 1000)}
+
+        print(f"\n=== /sdk/process-procedure patient={body.patient_id!r} ===")
+        print(f"Text: {text}")
+
+        qwen = extract_procedure_fields_qwen(text, body.schema)
+        print(f"QWEN extracted: {qwen['fields']}")
+
+        merged_schema    = merge_qwen_values(_copy.deepcopy(body.schema), qwen["fields"])
+        missing_required = compute_missing_required(merged_schema)
+        ai_filled_keys   = [
+            f["key"] for f in flatten_fields(merged_schema) if f.get("filled_by_ai")
+        ]
+
+        timestamp = body.timestamp or datetime.now().strftime("%Y%m%d_%H%M%S")
+        insert_recording(
+            file_path=body.audio_file or "",
+            transcript=text, intent="sdk_fill", confidence=None,
+            entities=json.dumps(qwen["fields"]), timestamp=timestamp,
+            patient_name=str(body.patient_id or ""),
+            action_type="sdk_fill",
+            user_id=x_user_id, user_role=x_user_role,
+            result_status="awaiting_approval",
+        )
+
+        return {
+            "success":            True,
+            "patient_id":         body.patient_id,
+            "approved_text":      text,
+            "schema":             merged_schema,
+            "ai_filled_keys":     ai_filled_keys,
+            "missing_required":   missing_required,
+            "can_approve":        len(missing_required) == 0,
+            "qwen_raw":           qwen.get("raw", ""),
+            "processing_time_ms": int((time.time() - start_time) * 1000),
+        }
+    except Exception as e:
+        print("ERROR /sdk/process-procedure:", str(e))
+        return {"success": False, "error": str(e),
+                "processing_time_ms": int((time.time() - start_time) * 1000)}
+
+
+# ── Procedure registry inspection ─────────────────────────────────────────────
+@app.get("/procedure-types")
+def get_procedure_types():
+    procs = list_procedures()
+    return {
+        "count":      len(procs),
+        "procedures": [
+            {"key": p["key"], "label": p["label"],
+             "service": p["service"], "description": p["description"]}
+            for p in procs
+        ],
+    }
+
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
 @app.get("/recordings")
 def get_recordings():
     return {"recordings": get_all_recordings()}

@@ -1,0 +1,34 @@
+# MPA backend — Python dependencies
+# Pinned to match the versions currently in backend/venv.
+#
+# IMPORTANT for server install:
+#   If the server has NO GPU (most likely), install the CPU-only torch wheel
+#   FIRST to avoid pip pulling the multi-GB CUDA build:
+#       pip install --index-url https://download.pytorch.org/whl/cpu torch==2.11.0
+#   Then run:
+#       pip install -r requirements.txt
+
+# Web framework
+fastapi==0.136.1
+uvicorn[standard]==0.46.0
+python-multipart==0.0.27
+pydantic==2.13.4
+
+# Speech-to-text
+openai-whisper==20250625
+
+# LLM / NLP
+transformers==5.8.0
+tokenizers==0.22.2
+safetensors==0.7.0
+huggingface_hub==1.14.0
+ollama==0.6.2
+
+# Torch — CPU build recommended (see note at top of file)
+torch==2.11.0
+
+# Numerical / utilities (transitive but pinned for reproducibility)
+numpy==2.4.4
+tqdm==4.67.3
+regex==2026.4.4
+tiktoken==0.12.0

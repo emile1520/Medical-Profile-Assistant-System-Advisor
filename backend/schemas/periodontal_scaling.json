@@ -1,0 +1,156 @@
+{
+  "activeProcedure": {
+    "effectiveActId": 9408,
+    "procedureKey": "periodontal_scaling",
+    "status": "in_progress",
+    "service": { "key": "periodontics", "label": "Periodontics" },
+    "offering": {
+      "id": 703,
+      "label": "Periodontal Scaling & Cleaning",
+      "localActKey": "periodontalScaling",
+      "description": "Removal of plaque and calculus from tooth surfaces, supra- and sub-gingival."
+    },
+    "patientMiniState": {
+      "patientId": 3211,
+      "age": 55,
+      "sex": "male",
+      "medical": {
+        "smokingStatus": { "value": "smokerMoreThan10CigarettesPerDay", "label": "Smoker, more than 10 cigarettes/day" },
+        "diabetesStatus": { "value": "not_diabetic", "label": "Not diabetic" },
+        "allergies": { "value": [] }
+      }
+    },
+    "caseContext": {
+      "caseId": 631,
+      "scope": { "type": "full_mouth", "value": "all", "label": "Full mouth" },
+      "clinicalGoal": "control_periodontal_disease"
+    },
+    "detectionHints": {
+      "keywords": ["scaling", "cleaning", "calculus", "tartar", "pocket depth", "periodontal", "gingivitis", "plaque", "root planing", "prophylaxis", "bleeding on probing"],
+      "examples": [
+        "Full mouth scaling completed, heavy calculus, pocket depths up to 5 millimeters",
+        "Deep cleaning all four quadrants, bleeding on probing positive, chlorhexidine irrigation"
+      ]
+    },
+    "variants": [
+      {
+        "key": "scaling.quadrants",
+        "label": "Quadrants treated",
+        "fieldType": "multi_select",
+        "required": true,
+        "value": [],
+        "options": [
+          {"value": "upper_right", "label": "Upper right (UR)"},
+          {"value": "upper_left", "label": "Upper left (UL)"},
+          {"value": "lower_left", "label": "Lower left (LL)"},
+          {"value": "lower_right", "label": "Lower right (LR)"}
+        ],
+        "description": "Which quadrants were scaled this visit."
+      },
+      {
+        "key": "scaling.type",
+        "label": "Scaling type",
+        "fieldType": "select",
+        "required": true,
+        "value": null,
+        "options": [
+          {"value": "supragingival", "label": "Supragingival only"},
+          {"value": "subgingival", "label": "Subgingival"},
+          {"value": "full_mouth_deep", "label": "Full mouth deep scaling (with root planing)"}
+        ],
+        "description": "Depth and type of scaling performed."
+      }
+    ],
+    "findings": [
+      {
+        "key": "perio.pocketDepthMax",
+        "label": "Maximum pocket depth",
+        "fieldType": "number",
+        "unit": "mm",
+        "required": true,
+        "value": null,
+        "description": "Deepest pocket measured during examination."
+      },
+      {
+        "key": "perio.bleedingOnProbing",
+        "label": "Bleeding on probing",
+        "fieldType": "boolean",
+        "required": true,
+        "value": null,
+        "description": "Whether bleeding occurred during periodontal probing."
+      },
+      {
+        "key": "perio.calculusSeverity",
+        "label": "Calculus severity",
+        "fieldType": "select",
+        "required": false,
+        "value": null,
+        "options": [
+          {"value": "light", "label": "Light"},
+          {"value": "moderate", "label": "Moderate"},
+          {"value": "heavy", "label": "Heavy"}
+        ],
+        "description": "Overall calculus burden observed."
+      },
+      {
+        "key": "perio.gingivalRecession",
+        "label": "Gingival recession present",
+        "fieldType": "boolean",
+        "required": false,
+        "value": null,
+        "description": "Visible recession of the gingival margin."
+      }
+    ],
+    "results": {
+      "schemaKey": "perio.scalingResult",
+      "fields": [
+        {
+          "key": "irrigation_used",
+          "label": "Irrigation used",
+          "fieldType": "select",
+          "required": false,
+          "value": null,
+          "options": [
+            {"value": "chlorhexidine", "label": "Chlorhexidine"},
+            {"value": "saline", "label": "Saline"},
+            {"value": "hydrogen_peroxide", "label": "Hydrogen peroxide"},
+            {"value": "none", "label": "None"}
+          ],
+          "description": "Antimicrobial irrigation used during scaling."
+        },
+        {
+          "key": "fluoride_applied",
+          "label": "Fluoride applied",
+          "fieldType": "boolean",
+          "required": false,
+          "value": null,
+          "description": "Topical fluoride application at the end of cleaning."
+        },
+        {
+          "key": "oral_hygiene_instructions",
+          "label": "Oral hygiene instructions given",
+          "fieldType": "boolean",
+          "required": true,
+          "value": null,
+          "description": "Brushing/flossing instructions delivered to the patient."
+        },
+        {
+          "key": "referral_to_periodontist",
+          "label": "Referral to periodontist",
+          "fieldType": "boolean",
+          "required": false,
+          "value": null,
+          "description": "Whether the case was referred for specialist follow-up."
+        },
+        {
+          "key": "doctor_notes",
+          "label": "Clinical notes",
+          "fieldType": "textarea",
+          "required": false,
+          "value": "",
+          "description": "Free clinical narrative."
+        }
+      ]
+    }
+  }
+}

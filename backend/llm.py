@@ -64,6 +64,112 @@ def extract_entities(transcript: str) -> dict:
 # ── QWEN action + field extraction ────────────────────────────────────────────
 QWEN_MODEL = "qwen3:1.7b"
 
+
+# ── Deterministic keyword scoring (fast path) ────────────────────────────────
+def _score_procedures_by_keywords(text: str, procedures: list) -> list:
+    """
+    Return [(score, key)] sorted descending. Score is the number of distinct
+    keywords from a procedure's `keywords` list that appear in the text.
+    """
+    low = text.lower()
+    scored = []
+    for p in procedures:
+        score = 0
+        for kw in p.get("keywords", []):
+            if not kw:
+                continue
+            if kw.lower() in low:
+                score += 1
+        scored.append((score, p["key"]))
+    scored.sort(key=lambda t: (-t[0], t[1]))
+    return scored
+
+
+# ── QWEN: detect which procedure type matches the dictation ──────────────────
+def detect_procedure_type_qwen(text: str, procedures: list) -> dict:
+    """
+    Decide which registered procedure the dictation matches.
+
+    Strategy:
+      1. Score procedures by keyword hits. If there's a clear winner (top score
+         beats runner-up by ≥ 2 and top score ≥ 1), use it — no LLM call.
+      2. Otherwise, ask Qwen to break the tie / classify from scratch.
+
+    procedures: [{key, label, service, description, keywords, examples}, ...]
+    Returns: {"key": "<chosen_key or None>", "raw": "<llm raw>", "method": "keywords|qwen|fallback"}
+    """
+    if not text or not text.strip() or not procedures:
+        return {"key": None, "raw": "", "method": "none"}
+
+    # ── 1) Deterministic keyword scoring ─────────────────────────────────────
+    scored = _score_procedures_by_keywords(text, procedures)
+    print(f"[detect] keyword scores: {scored}")
+
+    if scored:
+        top_score, top_key       = scored[0]
+        second_score             = scored[1][0] if len(scored) > 1 else 0
+        # Clear winner: top has at least 1 hit and beats runner-up by ≥ 2
+        if top_score >= 1 and (top_score - second_score) >= 2:
+            print(f"[detect] keyword winner: {top_key} (score {top_score} vs {second_score})")
+            return {"key": top_key, "raw": f"keywords:{top_score}", "method": "keywords"}
+
+    # ── 2) Ambiguous or no hits → ask Qwen ────────────────────────────────────
+    lines = []
+    for p in procedures:
+        kw = ", ".join(p.get("keywords", [])[:10]) or "—"
+        lines.append(f'- "{p["key"]}" → {p["label"]} ({p.get("service", "")}). Keywords: {kw}')
+    menu = "\n".join(lines)
+    valid_keys = ", ".join(f'"{p["key"]}"' for p in procedures)
+
+    prompt = f"""/no_think
+You are a dental command router. Read the dentist's dictation and decide which procedure type it belongs to.
+
+AVAILABLE PROCEDURE TYPES:
+{menu}
+
+OUTPUT RULES:
+- Output ONLY a single JSON object: {{"key": "<chosen_key>"}}
+- "key" must be EXACTLY one of: {valid_keys}.
+- Pick the SINGLE best match. If the dictation does not clearly match any procedure, pick the closest one anyway.
+- No markdown, no explanation, no thinking — just the JSON.
+
+DICTATION:
+\"\"\"{text}\"\"\"
+
+JSON:"""
+
+    try:
+        response = ollama.chat(
+            model=QWEN_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            options={"temperature": 0.0},
+        )
+        raw = response["message"]["content"]
+        print(f"[QWEN detect raw]: {raw!r}")
+    except Exception as e:
+        # On error, fall back to the best keyword-scored candidate if any
+        if scored and scored[0][0] > 0:
+            return {"key": scored[0][1], "raw": f"QWEN error, keyword fallback: {e}", "method": "fallback"}
+        return {"key": None, "raw": f"QWEN error: {e}", "method": "error"}
+
+    cleaned = re.sub(r"<think>[\s\S]*?</think>", "", raw, flags=re.IGNORECASE)
+    match = re.search(r"\{[\s\S]*?\}", cleaned)
+    valid  = {p["key"] for p in procedures}
+
+    if match:
+        try:
+            parsed = json.loads(match.group(0))
+            key    = parsed.get("key")
+            if key in valid:
+                return {"key": key, "raw": raw, "method": "qwen"}
+        except json.JSONDecodeError:
+            pass
+
+    # Qwen returned garbage — fall back to the highest keyword-scored candidate
+    if scored and scored[0][0] > 0:
+        return {"key": scored[0][1], "raw": raw, "method": "fallback"}
+    return {"key": None, "raw": raw, "method": "none"}
+
 # Maps QWEN action keys → internal CRUD intent strings
 ACTION_TO_INTENT = {
     "view_record":     "view medical profile",

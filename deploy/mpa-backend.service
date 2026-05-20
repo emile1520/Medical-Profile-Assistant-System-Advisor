@@ -1,0 +1,65 @@
+# /etc/systemd/system/mpa-backend.service
+#
+# Runs the FastAPI backend under uvicorn as the `forge` user, bound to
+# loopback only (nginx proxies to it). Auto-restarts on failure.
+#
+# Install:
+#   sudo cp /home/forge/mpa/deploy/mpa-backend.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now mpa-backend
+#
+# Useful commands:
+#   sudo systemctl status mpa-backend
+#   sudo journalctl -u mpa-backend -f          # follow logs
+#   sudo systemctl restart mpa-backend
+
+[Unit]
+Description=MPA FastAPI backend (uvicorn)
+After=network.target ollama.service
+# Ollama doesn't have to be ready for the process to *start*, but the first
+# request that hits Qwen will fail if Ollama isn't up. Wants= is a soft dep.
+Wants=ollama.service
+# Restart throttling lives in [Unit], not [Service]
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=forge
+Group=forge
+WorkingDirectory=/home/forge/mpa/backend
+
+# Run uvicorn from the venv. --host 127.0.0.1 keeps it off the public
+# interface; nginx is the only thing that talks to it.
+ExecStart=/home/forge/mpa/backend/venv/bin/uvicorn main:app \
+    --host 127.0.0.1 \
+    --port 8000 \
+    --workers 1 \
+    --timeout-keep-alive 75
+
+# One worker because Whisper + transformers each hold ~GBs of model weights;
+# multiple workers would multiply RAM use. If you later need concurrency,
+# raise this with a clear understanding of the RAM cost.
+
+Restart=on-failure
+RestartSec=5
+
+# HuggingFace + torch need a writable cache directory.
+Environment=HOME=/home/forge
+Environment=HF_HOME=/home/forge/.cache/huggingface
+Environment=TRANSFORMERS_CACHE=/home/forge/.cache/huggingface
+Environment=PYTHONUNBUFFERED=1
+
+# Process limits — bump file descriptors because uvicorn + many concurrent
+# clients can otherwise hit the default 1024 limit.
+LimitNOFILE=65535
+
+# Mild hardening. Loosen if a feature breaks.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/home/forge/mpa /home/forge/.cache
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,172 @@
+{
+  "activeProcedure": {
+    "effectiveActId": 9201,
+    "procedureKey": "extraction",
+    "status": "in_progress",
+    "service": { "key": "oral_surgery", "label": "Oral Surgery" },
+    "offering": {
+      "id": 502,
+      "label": "Tooth Extraction",
+      "localActKey": "toothExtraction",
+      "description": "Simple or surgical removal of a non-restorable or impacted tooth."
+    },
+    "patientMiniState": {
+      "patientId": 2034,
+      "age": 28,
+      "sex": "male",
+      "medical": {
+        "smokingStatus": { "value": "non_smoker", "label": "Non-smoker" },
+        "diabetesStatus": { "value": "type_2_controlled", "label": "Type 2 diabetes, controlled" },
+        "allergies": { "value": [] }
+      }
+    },
+    "caseContext": {
+      "caseId": 415,
+      "scope": { "type": "tooth", "value": "18", "label": "Tooth 18 (upper right third molar)" },
+      "clinicalGoal": "remove_non_restorable"
+    },
+    "detectionHints": {
+      "keywords": ["extraction", "extract", "remove tooth", "pulled", "surgical extraction", "wisdom tooth", "sutures", "forceps", "elevator", "hemostasis"],
+      "examples": [
+        "Extracted tooth 18, simple extraction under local anesthesia, two sutures placed",
+        "Surgical extraction of impacted wisdom tooth, hemostasis achieved, antibiotics prescribed"
+      ]
+    },
+    "variants": [
+      {
+        "key": "anatomy.tooth",
+        "label": "Tooth",
+        "fieldType": "tooth_picker",
+        "required": true,
+        "locked": true,
+        "value": "18",
+        "description": "Tooth being extracted. Locked from the treatment plan."
+      },
+      {
+        "key": "extraction.type",
+        "label": "Extraction type",
+        "fieldType": "select",
+        "required": true,
+        "value": null,
+        "options": [
+          {"value": "simple", "label": "Simple extraction"},
+          {"value": "surgical", "label": "Surgical extraction"}
+        ],
+        "description": "Simple (forceps/elevator only) or surgical (with flap, bone removal, sectioning)."
+      },
+      {
+        "key": "anesthesia.type",
+        "label": "Anesthesia",
+        "fieldType": "select",
+        "required": true,
+        "value": null,
+        "options": [
+          {"value": "local_infiltration", "label": "Local infiltration"},
+          {"value": "nerve_block", "label": "Nerve block"},
+          {"value": "general", "label": "General anesthesia"}
+        ],
+        "description": "Type of anesthesia administered."
+      }
+    ],
+    "findings": [
+      {
+        "key": "extraction.mobilityGrade",
+        "label": "Mobility grade",
+        "fieldType": "select",
+        "required": false,
+        "value": null,
+        "options": [
+          {"value": "0", "label": "Grade 0 — no mobility"},
+          {"value": "1", "label": "Grade 1 — slight"},
+          {"value": "2", "label": "Grade 2 — moderate"},
+          {"value": "3", "label": "Grade 3 — severe"}
+        ],
+        "description": "Pre-extraction tooth mobility."
+      },
+      {
+        "key": "extraction.infectionPresent",
+        "label": "Infection present",
+        "fieldType": "boolean",
+        "required": false,
+        "value": null,
+        "description": "Visible signs of infection at extraction site (pus, swelling, abscess)."
+      },
+      {
+        "key": "extraction.boneResorption",
+        "label": "Bone resorption",
+        "fieldType": "select",
+        "required": false,
+        "value": null,
+        "options": [
+          {"value": "none", "label": "None"},
+          {"value": "minimal", "label": "Minimal"},
+          {"value": "moderate", "label": "Moderate"},
+          {"value": "severe", "label": "Severe"}
+        ],
+        "description": "Degree of surrounding alveolar bone resorption observed."
+      }
+    ],
+    "results": {
+      "schemaKey": "surgery.extractionResult",
+      "fields": [
+        {
+          "key": "extraction_completed",
+          "label": "Extraction completed",
+          "fieldType": "boolean",
+          "required": true,
+          "value": null,
+          "description": "Whether the tooth was successfully removed in full."
+        },
+        {
+          "key": "hemostasis_achieved",
+          "label": "Hemostasis achieved",
+          "fieldType": "boolean",
+          "required": true,
+          "value": null,
+          "description": "Whether bleeding was controlled before the patient was dismissed."
+        },
+        {
+          "key": "sutures_placed",
+          "label": "Sutures placed",
+          "fieldType": "boolean",
+          "required": false,
+          "value": null,
+          "description": "Whether sutures were placed at the extraction site."
+        },
+        {
+          "key": "sutures_count",
+          "label": "Number of sutures",
+          "fieldType": "number",
+          "unit": "stitches",
+          "required": false,
+          "value": null,
+          "description": "Count of sutures placed, if any."
+        },
+        {
+          "key": "prescribed_medications",
+          "label": "Prescribed medications",
+          "fieldType": "tags",
+          "required": false,
+          "value": [],
+          "description": "Antibiotics, painkillers, or anti-inflammatories prescribed post-op."
+        },
+        {
+          "key": "post_op_instructions_given",
+          "label": "Post-op instructions given",
+          "fieldType": "boolean",
+          "required": true,
+          "value": null,
+          "description": "Whether written or verbal post-extraction care instructions were provided."
+        },
+        {
+          "key": "doctor_notes",
+          "label": "Clinical notes",
+          "fieldType": "textarea",
+          "required": false,
+          "value": "",
+          "description": "Free clinical narrative."
+        }
+      ]
+    }
+  }
+}

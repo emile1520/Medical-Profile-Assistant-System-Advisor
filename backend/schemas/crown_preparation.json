@@ -1,0 +1,165 @@
+{
+  "activeProcedure": {
+    "effectiveActId": 9519,
+    "procedureKey": "crown_preparation",
+    "status": "in_progress",
+    "service": { "key": "prosthodontics", "label": "Prosthodontics" },
+    "offering": {
+      "id": 814,
+      "label": "Crown Preparation",
+      "localActKey": "crownPrep",
+      "description": "Preparation of a tooth to receive a full-coverage prosthetic crown, with impression and provisional."
+    },
+    "patientMiniState": {
+      "patientId": 2790,
+      "age": 38,
+      "sex": "female",
+      "medical": {
+        "smokingStatus": { "value": "non_smoker", "label": "Non-smoker" },
+        "diabetesStatus": { "value": "not_diabetic", "label": "Not diabetic" },
+        "allergies": { "value": ["latex"] }
+      }
+    },
+    "caseContext": {
+      "caseId": 744,
+      "scope": { "type": "tooth", "value": "26", "label": "Tooth 26" },
+      "clinicalGoal": "restore_with_full_coverage"
+    },
+    "detectionHints": {
+      "keywords": ["crown", "prep", "preparation", "zirconia", "PFM", "e.max", "lithium disilicate", "impression", "temporary crown", "margin", "chamfer", "shoulder", "bite registration"],
+      "examples": [
+        "Crown prep on tooth 26, zirconia, chamfer margin, impression taken, temporary placed",
+        "Prepared tooth 26 for full coverage crown, shade A2, digital scan completed"
+      ]
+    },
+    "variants": [
+      {
+        "key": "anatomy.tooth",
+        "label": "Tooth",
+        "fieldType": "tooth_picker",
+        "required": true,
+        "locked": true,
+        "value": "26",
+        "description": "Tooth being prepared."
+      },
+      {
+        "key": "crown.material",
+        "label": "Crown material",
+        "fieldType": "select",
+        "required": true,
+        "value": null,
+        "options": [
+          {"value": "zirconia", "label": "Zirconia"},
+          {"value": "pfm", "label": "Porcelain-fused-to-metal (PFM)"},
+          {"value": "e_max", "label": "Lithium disilicate (e.max)"},
+          {"value": "gold", "label": "Full gold"}
+        ],
+        "description": "Material chosen for the final crown."
+      },
+      {
+        "key": "crown.marginType",
+        "label": "Margin design",
+        "fieldType": "select",
+        "required": true,
+        "value": null,
+        "options": [
+          {"value": "chamfer", "label": "Chamfer"},
+          {"value": "shoulder", "label": "Shoulder"},
+          {"value": "knife_edge", "label": "Knife-edge"}
+        ],
+        "description": "Margin geometry of the preparation."
+      },
+      {
+        "key": "crown.shade",
+        "label": "Shade selected",
+        "fieldType": "select",
+        "required": false,
+        "value": null,
+        "options": [
+          {"value": "A1", "label": "A1"},
+          {"value": "A2", "label": "A2"},
+          {"value": "A3", "label": "A3"},
+          {"value": "B1", "label": "B1"},
+          {"value": "B2", "label": "B2"}
+        ],
+        "description": "Vita shade for the final restoration."
+      }
+    ],
+    "findings": [
+      {
+        "key": "crown.existingRestoration",
+        "label": "Existing restoration present",
+        "fieldType": "boolean",
+        "required": false,
+        "value": null,
+        "description": "Whether the tooth had a previous filling or crown."
+      },
+      {
+        "key": "crown.pulpProtectionNeeded",
+        "label": "Pulp protection needed",
+        "fieldType": "boolean",
+        "required": false,
+        "value": null,
+        "description": "Whether a liner / base was indicated due to prep depth."
+      }
+    ],
+    "results": {
+      "schemaKey": "prostho.crownPrepResult",
+      "fields": [
+        {
+          "key": "preparation_completed",
+          "label": "Preparation completed",
+          "fieldType": "boolean",
+          "required": true,
+          "value": null,
+          "description": "Whether the tooth preparation was finished this visit."
+        },
+        {
+          "key": "impression_taken",
+          "label": "Impression taken",
+          "fieldType": "boolean",
+          "required": true,
+          "value": null,
+          "description": "Whether a final impression was recorded."
+        },
+        {
+          "key": "impression_material",
+          "label": "Impression material",
+          "fieldType": "select",
+          "required": false,
+          "value": null,
+          "options": [
+            {"value": "pvs", "label": "Polyvinyl siloxane (PVS)"},
+            {"value": "polyether", "label": "Polyether"},
+            {"value": "digital_scan", "label": "Digital intraoral scan"}
+          ],
+          "description": "Type of impression used."
+        },
+        {
+          "key": "temporary_crown_placed",
+          "label": "Temporary crown placed",
+          "fieldType": "boolean",
+          "required": true,
+          "value": null,
+          "description": "Whether a provisional crown was cemented."
+        },
+        {
+          "key": "bite_registration_taken",
+          "label": "Bite registration taken",
+          "fieldType": "boolean",
+          "required": false,
+          "value": null,
+          "description": "Whether the occlusal record was captured."
+        },
+        {
+          "key": "doctor_notes",
+          "label": "Clinical notes",
+          "fieldType": "textarea",
+          "required": false,
+          "value": "",
+          "description": "Free clinical narrative."
+        }
+      ]
+    }
+  }
+}
