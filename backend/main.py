@@ -1,8 +1,9 @@
-from fastapi import FastAPI, File, UploadFile, Header
+from fastapi import FastAPI, File, UploadFile, Header, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Any, Dict, Optional
 import whisper
+import jwt
 import os
 import re
 import json
@@ -22,14 +23,79 @@ from procedure_schema import (
 app = FastAPI()
 
 # ── CORS ──────────────────────────────────────────────────────────────────────
+# Origins allowed to call the API. The defaults cover the expected Seraph
+# hosts plus common local-dev ports. Override in production by setting
+# MPA_ALLOWED_ORIGINS=https://prod.example.com,https://staging.example.com
+# in the systemd unit. Comma-separated, no spaces inside an origin.
+_DEFAULT_ALLOWED_ORIGINS = ",".join([
+    "https://seraph.tomorrow.services",
+    "https://seraph-staging.tomorrow.services",
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:3000",
+])
+ALLOWED_ORIGINS = [
+    o.strip()
+    for o in os.environ.get("MPA_ALLOWED_ORIGINS", _DEFAULT_ALLOWED_ORIGINS).split(",")
+    if o.strip()
+]
+print(f"[CORS] allow_origins = {ALLOWED_ORIGINS}")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Authorization", "Content-Type", "X-User-Id", "X-User-Role"],
 )
+
+# ── JWT auth (Option 1 from deploy/AUTH-OPTIONS.md) ──────────────────────────
+# Seraph signs short-lived JWTs on its backend using the shared MPA_JWT_SECRET.
+# Every SDK request carries one in the Authorization header; we verify it here.
+# Generate the secret with:
+#     python -c "import secrets; print(secrets.token_urlsafe(48))"
+# then set it on BOTH this server and Seraph's server. Hand to Tomorrow
+# Services via a secure channel (1Password), NOT email or Slack DM.
+MPA_JWT_SECRET = os.environ.get("MPA_JWT_SECRET")
+if not MPA_JWT_SECRET:
+    # Local dev convenience: boot anyway with a placeholder secret so unit
+    # tests / local runs don't require env setup. Production deployments MUST
+    # set the env var in the systemd unit — see deploy/mpa-backend.service.
+    print(
+        "WARNING: MPA_JWT_SECRET not set - using dev fallback. "
+        "NEVER deploy to production without setting this env var."
+    )
+    MPA_JWT_SECRET = "dev-fallback-do-not-use-in-production"
+
+JWT_ISSUER   = os.environ.get("MPA_JWT_ISSUER",   "seraph")
+JWT_AUDIENCE = os.environ.get("MPA_JWT_AUDIENCE", "mpa")
+
+
+def verify_seraph_token(authorization: Optional[str] = Header(default=None)) -> dict:
+    """FastAPI dependency. Raises 401 if the Authorization header is missing or
+    the JWT is invalid / expired. Returns the decoded claims on success
+    (e.g. {sub, clinic, iat, exp, iss, aud}). Attach as
+        claims: dict = Depends(verify_seraph_token)
+    on any endpoint that should be reachable only from Seraph.
+    """
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="Missing bearer token")
+    token = authorization.split(" ", 1)[1].strip()
+    try:
+        claims = jwt.decode(
+            token,
+            MPA_JWT_SECRET,
+            algorithms=["HS256"],
+            issuer=JWT_ISSUER,
+            audience=JWT_AUDIENCE,
+        )
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError as e:
+        raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
+    return claims
+
 
 # ── Load Whisper ───────────────────────────────────────────────────────────────
 print("Loading Whisper model...")
@@ -86,6 +152,7 @@ async def upload_audio(
     file: UploadFile = File(...),
     x_user_id:   str = Header(default=None),
     x_user_role: str = Header(default="user"),
+    claims: dict = Depends(verify_seraph_token),
 ):
     start_time = time.time()
     try:
@@ -139,7 +206,6 @@ async def process_procedure(
 ):
     start_time = time.time()
     try:
-        # Identity
         if not x_user_id:
             return {"success": False, "api_error":
                     {"code": "NO_USER", "message": "Missing X-User-Id header."},
@@ -149,7 +215,6 @@ async def process_procedure(
                     {"code": "BAD_ROLE", "message": f"Invalid role '{x_user_role}'."},
                     "processing_time_ms": int((time.time() - start_time) * 1000)}
 
-        # Sanitize + validate
         text = sanitize_transcript(body.approved_text or "")
         v_err = validate_transcript(text)
         if v_err:
@@ -159,27 +224,22 @@ async def process_procedure(
         print(f"\n=== /process-procedure user={x_user_id} role={x_user_role} ===")
         print(f"Text: {text}")
 
-        # Step 1: detect which procedure type the dictation matches
         procedures   = list_procedures()
         detection    = detect_procedure_type_qwen(text, procedures)
         detected_key = detection.get("key")
         print(f"Detected procedure: {detected_key!r} (from {len(procedures)} candidates)")
 
-        # Step 2: load the matching schema (falls back to default if detection failed)
         schema = get_procedure_by_key(detected_key) if detected_key else get_sample_procedure()
 
-        # Step 3: extract fields against THAT schema
         qwen = extract_procedure_fields_qwen(text, schema)
         print(f"QWEN extracted: {qwen['fields']}")
 
-        # Merge QWEN values into schema (skips locked fields)
         merged_schema    = merge_qwen_values(schema, qwen["fields"])
         missing_required = compute_missing_required(merged_schema)
         ai_filled_keys   = [
             f["key"] for f in flatten_fields(merged_schema) if f.get("filled_by_ai")
         ]
 
-        # Log to DB
         timestamp = body.timestamp or datetime.now().strftime("%Y%m%d_%H%M%S")
         insert_recording(
             file_path=body.audio_file or "",
@@ -244,18 +304,16 @@ async def approve_procedure(
                     {"code": "BAD_ROLE", "message": f"Invalid role '{x_user_role}'."},
                     "processing_time_ms": int((time.time() - start_time) * 1000)}
 
-        # Validate required fields against the correct schema
         missing = validate_required_values(body.field_values or {}, body.procedure_key)
         if missing:
             return {"success": False,
                     "api_error": {
                         "code":    "MISSING_REQUIRED",
-                        "message": "Cannot approve — required fields are still empty.",
+                        "message": "Cannot approve - required fields are still empty.",
                         "missing": missing,
                     },
                     "processing_time_ms": int((time.time() - start_time) * 1000)}
 
-        # Build mock API call + response using the matching schema
         schema   = get_procedure_by_key(body.procedure_key) if body.procedure_key else get_sample_procedure()
         act_id   = schema["activeProcedure"]["effectiveActId"]
         api_call = {
@@ -323,17 +381,16 @@ async def sdk_process_procedure(
     body: SdkProcessBody,
     x_user_id:   str = Header(default="sdk_user"),
     x_user_role: str = Header(default="user"),
-    authorization: Optional[str] = Header(default=None),
+    claims: dict = Depends(verify_seraph_token),
 ):
-    """Client-provided schema entry point. Seraph sends text + schema; we fill it."""
+    """Client-provided schema entry point. Seraph sends text + schema; we fill it.
+
+    Auth is enforced by verify_seraph_token - a missing/invalid/expired JWT
+    short-circuits with HTTP 401 before this function is entered.
+    """
     import copy as _copy
     start_time = time.time()
     try:
-        if not authorization:
-            return {"success": False, "api_error":
-                    {"code": "NO_TOKEN", "message": "Missing Authorization header."},
-                    "processing_time_ms": int((time.time() - start_time) * 1000)}
-
         text  = sanitize_transcript(body.text or "")
         v_err = validate_transcript(text)
         if v_err:
@@ -343,7 +400,7 @@ async def sdk_process_procedure(
         if not body.schema or "activeProcedure" not in body.schema:
             return {"success": False, "api_error":
                     {"code": "BAD_SCHEMA",
-                     "message": "schema must contain an 'activeProcedure' object."},
+                     "message": "schema must contain an activeProcedure object."},
                     "processing_time_ms": int((time.time() - start_time) * 1000)}
 
         print(f"\n=== /sdk/process-procedure patient={body.patient_id!r} ===")

@@ -50,6 +50,20 @@ Environment=HF_HOME=/home/forge/.cache/huggingface
 Environment=TRANSFORMERS_CACHE=/home/forge/.cache/huggingface
 Environment=PYTHONUNBUFFERED=1
 
+# ── Auth secrets (set these directly on the server, NOT in this repo file) ──
+# 1. Generate the JWT secret once and share it with Tomorrow Services via a
+#    secure channel (1Password). Use:
+#        python -c "import secrets; print(secrets.token_urlsafe(48))"
+# 2. Edit /etc/systemd/system/mpa-backend.service on the server and uncomment
+#    the line below with the real value, then:
+#        sudo systemctl daemon-reload && sudo systemctl restart mpa-backend
+# 3. Override the CORS allow-list once Seraph's production origin is known.
+#
+# Environment=MPA_JWT_SECRET=<paste-base64-secret-here>
+# Environment=MPA_ALLOWED_ORIGINS=https://seraph.tomorrow.services,https://seraph-staging.tomorrow.services
+# Environment=MPA_JWT_ISSUER=seraph
+# Environment=MPA_JWT_AUDIENCE=mpa
+
 # Process limits — bump file descriptors because uvicorn + many concurrent
 # clients can otherwise hit the default 1024 limit.
 LimitNOFILE=65535
