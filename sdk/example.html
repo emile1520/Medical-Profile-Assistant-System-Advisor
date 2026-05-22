@@ -238,7 +238,7 @@
     mpa.onStateChange((s) => {
       document.getElementById('state-pill').textContent = s;
     });
-    mpa.onWakeHeard((phrase) => log('🎤 Heard: "' + phrase + '"  (say "hey seraph" to begin)'));
+    mpa.onWakeHeard((phrase) => log('🎤 Heard: "' + phrase + '"  (say "start recording" to begin)'));
 
     // ── Wire up the UI ─────────────────────────────────────────────────
     document.getElementById('btn-start-case').addEventListener('click', () => {
@@ -263,7 +263,7 @@
     });
     document.getElementById('btn-listen').addEventListener('click', () => {
       mpa.startListening();
-      log('👂 Voice activation on — say "hey seraph" to begin');
+      log('👂 Voice activation on — say "start recording" to begin');
     });
 
     log('SDK loaded · version ' + MPA.version + ' · fetching schemas from Seraph…');
