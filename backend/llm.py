@@ -202,51 +202,91 @@ def _parse_json_block(text: str) -> dict:
         return {"action": "none", "fields": {}}
 
 
+def _walk_fields(node, out):
+    """
+    Recursively find every dict that looks like a fillable field
+    (has 'key', 'label', and 'fieldType'), regardless of where it lives
+    in the schema. Skips locked fields. Mutates `out` in place.
+
+    This makes the extractor schema-shape-agnostic: callers can send a
+    schema with variants/findings/results, a flat fields[] list, or any
+    custom nesting (examination/diagnosis/treatment/...) — we'll find
+    every field as long as it has the three identifying keys.
+    """
+    if isinstance(node, dict):
+        if "key" in node and "label" in node and "fieldType" in node:
+            if not node.get("locked"):
+                out.append(node)
+            # Don't recurse into a field's own sub-objects (e.g. options)
+            return
+        for v in node.values():
+            _walk_fields(v, out)
+    elif isinstance(node, list):
+        for item in node:
+            _walk_fields(item, out)
+
+
+def _domain_label(schema: dict) -> str:
+    """
+    Pull a human label for the procedure out of the schema if present, so
+    the prompt can say e.g. 'composite filling dictation' instead of
+    a hardcoded 'dentist's dictation'. Falls back to 'practitioner's'.
+    """
+    proc = schema.get("activeProcedure") if isinstance(schema, dict) else None
+    if isinstance(proc, dict):
+        off = proc.get("offering") or {}
+        svc = proc.get("service") or {}
+        for candidate in (off.get("label"), svc.get("label")):
+            if isinstance(candidate, str) and candidate.strip():
+                return candidate.strip()
+    return "practitioner's"
+
+
 def extract_procedure_fields_qwen(text: str, schema: dict) -> dict:
     """
-    Schema-driven extraction. Walks the procedure schema, builds a constrained
-    prompt listing every editable field + its allowed values, then asks QWEN
-    to return a flat {field_key: value} JSON.
+    Schema-driven extraction. Walks the procedure schema (any shape),
+    builds a constrained prompt listing every editable field + its allowed
+    values, then asks QWEN to return a flat {field_key: value} JSON.
 
     Returns: {"fields": {...}, "raw": "<llm raw>"}
     """
     if not text or not text.strip():
         return {"fields": {}, "raw": ""}
 
-    # Flatten schema → list editable, non-locked fields with descriptions
-    proc = schema.get("activeProcedure", {})
-    sections = [
-        ("variants", proc.get("variants", [])),
-        ("findings", proc.get("findings", [])),
-        ("results",  proc.get("results", {}).get("fields", [])),
-    ]
+    # Recursive walk — finds fields anywhere in the schema, not just in
+    # dental-specific sections. Backward-compatible with old shape because
+    # variants/findings/results.fields are still discovered.
+    all_fields: list = []
+    _walk_fields(schema, all_fields)
 
     field_lines = []
-    for section_name, items in sections:
-        for f in items:
-            if f.get("locked"):
-                continue
-            key      = f.get("key")
-            ftype    = f.get("fieldType")
-            desc     = f.get("description", "")
-            opts     = f.get("options")
-            unit     = f.get("unit")
+    for f in all_fields:
+        key   = f.get("key")
+        ftype = f.get("fieldType")
+        desc  = f.get("description", "")
+        opts  = f.get("options")
+        unit  = f.get("unit")
 
-            line = f"- {key} [{ftype}"
-            if unit:
-                line += f", unit={unit}"
-            line += "]"
-            if opts:
-                vals = ", ".join(o["value"] for o in opts)
-                line += f" allowed_values=[{vals}]"
-            if desc:
-                line += f" — {desc}"
-            field_lines.append(line)
+        line = f"- {key} [{ftype}"
+        if unit:
+            line += f", unit={unit}"
+        line += "]"
+        if opts:
+            try:
+                vals = ", ".join(str(o["value"]) for o in opts if isinstance(o, dict) and "value" in o)
+                if vals:
+                    line += f" allowed_values=[{vals}]"
+            except Exception:
+                pass
+        if desc:
+            line += f" — {desc}"
+        field_lines.append(line)
 
-    fields_text = "\n".join(field_lines)
+    fields_text = "\n".join(field_lines) if field_lines else "(no fillable fields found in schema)"
+    domain = _domain_label(schema)
 
     prompt = f"""/no_think
-You are a medical scribe AI. Extract field values from the dentist's dictation and map them to the structured schema below.
+You are a medical scribe AI. Extract field values from the {domain} dictation and map them to the structured schema below.
 
 AVAILABLE FIELDS (key [type] allowed_values — description):
 {fields_text}
