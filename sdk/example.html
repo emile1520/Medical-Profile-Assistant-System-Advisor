@@ -26,7 +26,7 @@
     }
     .card h2 { margin: 0 0 6px 0; font-size: 18px; }
     .card .desc { font-size: 13px; color: #64748b; margin-bottom: 14px; }
-    button {
+    button, select {
       font-family: inherit;
       font-size: 14px;
       font-weight: 600;
@@ -35,6 +35,11 @@
       border-radius: 8px;
       cursor: pointer;
       margin-right: 8px;
+    }
+    select {
+      background: white;
+      border: 1px solid #cbd5e1;
+      color: #1e293b;
     }
     button:disabled {
       background: #cbd5e1 !important;
@@ -52,13 +57,6 @@
       font-size: 12px; font-weight: 600;
       background: #f1f5f9; color: #475569;
     }
-    .detected-badge {
-      display: inline-block; padding: 4px 10px; border-radius: 999px;
-      font-size: 12px; font-weight: 600;
-      background: #ccfbf1; color: #115e59; border: 1px solid #5eead4;
-      margin-left: 8px;
-    }
-    .detected-badge.pending { background: #f1f5f9; color: #94a3b8; border-color: #e2e8f0; }
     .field { display: flex; gap: 10px; align-items: center; margin-bottom: 6px; font-size: 14px; }
     .field-label { width: 220px; color: #475569; font-weight: 500; }
     .field-value {
@@ -75,57 +73,51 @@
     }
     .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
     .log-line { font-family: monospace; font-size: 12px; color: #475569; margin: 2px 0; }
-    .hint {
-      background: #ecfeff; border: 1px dashed #67e8f9; padding: 10px 14px;
-      border-radius: 8px; font-size: 13px; color: #155e75; margin-top: 12px;
-    }
-    .hint code { background: rgba(15,118,110,0.08); padding: 1px 4px; border-radius: 3px; }
-    .hint ul { margin: 6px 0 0; padding-left: 18px; }
-    .hint li { margin-bottom: 4px; }
   </style>
 </head>
 <body>
 
-  <h1>MPA SDK — Integration Example (schemas fetched from Seraph)</h1>
+  <h1>MPA SDK — Integration Example</h1>
   <p class="sub">
-    No schemas are hard-coded in this page. On startup the SDK fetches them from a mock
-    Seraph endpoint, then auto-detects which one matches whatever the dentist dictates.
-    Open <code>mock-seraph/schemas-catalog.json</code> in your browser — that's the
-    only place the schema data lives.
+    Production flow: Seraph picks the procedure, hands the SDK the matching schema,
+    the dentist dictates, MPA fills the form. This demo mocks the "Seraph picks the
+    procedure" step with a dropdown — in real Seraph that selection happens on the
+    patient chart UI.
   </p>
 
-  <!-- ── Mock patient context bar ──────────────────────────────────────── -->
+  <!-- ── Case start + recording controls ───────────────────────────────── -->
   <div class="card">
-    <h2>Auto-detect dictation</h2>
+    <h2>Procedure</h2>
     <div class="desc">
-      Three procedure schemas are registered with the SDK on page load. After you stop recording,
-      the SDK scores the transcript against each schema's keywords and picks the winner.
+      Pick a procedure (this is what Seraph would do for you) and click <em>Start case</em>.
+      Then record the dictation.
+    </div>
+
+    <div class="row" style="margin-bottom: 14px;">
+      <select id="procedure-picker" disabled>
+        <option>Loading schemas…</option>
+      </select>
+      <span>State: <span id="state-pill" class="state-pill">idle</span></span>
     </div>
 
     <div class="row">
-      <span>State: <span id="state-pill" class="state-pill">idle</span></span>
-      <span>Detected: <span id="detected-pill" class="detected-badge pending">— none yet —</span></span>
+      <button id="btn-start-case" class="btn-primary" disabled>Start case</button>
+      <button id="btn-start-rec"   class="btn-primary"  disabled>🎙 Start recording</button>
+      <button id="btn-stop-rec"    class="btn-stop"     disabled>⏹ Stop recording</button>
+      <button id="btn-listen"      class="btn-ghost"    disabled>👂 Voice activation</button>
     </div>
-
-    <div class="row" style="margin-top: 14px;">
-      <button id="btn-start-case" class="btn-primary">Start auto-detect case</button>
-      <button id="btn-start-rec"  class="btn-primary"  disabled>🎙 Start recording</button>
-      <button id="btn-stop-rec"   class="btn-stop"     disabled>⏹ Stop recording</button>
-      <button id="btn-listen"     class="btn-ghost"    disabled>👂 Voice activation</button>
-    </div>
-
   </div>
 
   <!-- ── The Seraph-side form (rendered dynamically from the schema) ───── -->
   <div class="card">
     <h2>Seraph's procedure form</h2>
     <div class="desc">
-      Rendered from whichever schema the SDK auto-picked. <span style="color:#0e7490">Teal</span> =
+      Rendered from the schema Seraph provided. <span style="color:#0e7490">Teal</span> =
       AI-filled. <span style="color:#a16207">Yellow</span> = locked (came from the plan).
     </div>
     <div id="form-container">
-      <div class="field"><div class="field-label" style="color:#94a3b8;">Awaiting dictation…</div>
-        <div class="field-value empty">— click <em>Start auto-detect case</em> then record —</div></div>
+      <div class="field"><div class="field-label" style="color:#94a3b8;">Awaiting case…</div>
+        <div class="field-value empty">— pick a procedure and click <em>Start case</em> —</div></div>
     </div>
   </div>
 
@@ -140,48 +132,71 @@
   </div>
 
   <!-- ── The SDK ──────────────────────────────────────────────────────── -->
-  <!-- Absolute path so this page works whether served at / or /sdk/example.html -->
   <script src="/sdk/mpa-sdk.js"></script>
 
   <script>
-    // ════════════════════════════════════════════════════════════════════
-    // No schemas in this file — they live at the Seraph mock endpoint below.
-    // ════════════════════════════════════════════════════════════════════
+    // The mock-Seraph endpoint serves a catalog of schemas keyed by procedure.
+    // In real Seraph, the matching schema for the dentist's chosen procedure
+    // would come from Seraph's own API instead of this mock file.
     const SERAPH_SCHEMAS_URL = '/mock-seraph/schemas-catalog.json';
 
-    // The SDK defaults to apiBase '/api' (same origin → mpa.tomorrow.services),
-    // so no apiBase override is needed in production. For local dev, override:
-    //   apiBase: 'http://127.0.0.1:8000'
+    // SDK defaults apiBase to '/api' (same origin → mpa.tomorrow.services).
+    // For local dev override: apiBase: 'http://127.0.0.1:8000'
     const mpa = MPA.init({
       token:   'demo-token-from-seraph-auth',
       userId:  'DR-MEZHER'
     });
 
-    // The fetch is async. We disable the "Start case" button until it resolves.
-    document.getElementById('btn-start-case').disabled = true;
-    mpa.fetchSchemas(SERAPH_SCHEMAS_URL)
-      .then((schemasMap) => {
-        const keys = Object.keys(schemasMap);
-        log('📥 Fetched ' + keys.length + ' schemas from Seraph: ' + keys.join(', '));
+    // We keep the fetched catalog locally so the picker can dispatch the
+    // right schema when the user clicks "Start case".
+    let CATALOG = null;
+
+    fetch(SERAPH_SCHEMAS_URL)
+      .then((r) => r.json())
+      .then((catalog) => {
+        CATALOG = catalog;
+        const picker = document.getElementById('procedure-picker');
+        picker.innerHTML = '';
+        Object.keys(catalog).forEach((key) => {
+          const opt  = document.createElement('option');
+          opt.value  = key;
+          opt.textContent = (catalog[key].label || key);
+          picker.appendChild(opt);
+        });
+        picker.disabled = false;
         document.getElementById('btn-start-case').disabled = false;
+        log('📥 Loaded ' + Object.keys(catalog).length + ' schemas from Seraph: ' +
+            Object.keys(catalog).join(', '));
       })
-      .catch((err) => {
-        log('❌ Could not fetch schemas: ' + err.message);
-      });
+      .catch((err) => log('❌ Could not fetch schemas: ' + err.message));
 
     // ── Helpers ────────────────────────────────────────────────────────
+    // Shape-agnostic walker (mirrors the backend): find every field-shaped
+    // dict (has key + label + fieldType) anywhere in the schema.
     function flattenSchema(schema) {
-      const p = (schema && schema.activeProcedure) || {};
-      return []
-        .concat(p.variants || [])
-        .concat(p.findings || [])
-        .concat((p.results && p.results.fields) || []);
+      const out = [];
+      function walk(node) {
+        if (node && typeof node === 'object' && !Array.isArray(node)) {
+          if ('key' in node && 'label' in node && 'fieldType' in node) { out.push(node); return; }
+          for (const k in node) walk(node[k]);
+        } else if (Array.isArray(node)) {
+          node.forEach(walk);
+        }
+      }
+      walk(schema);
+      return out;
     }
+
     function renderForm(schema, aiKeys) {
       const container = document.getElementById('form-container');
       container.innerHTML = '';
       const aiSet = new Set(aiKeys || []);
-      flattenSchema(schema).forEach((field) => {
+      const fields = flattenSchema(schema);
+      if (!fields.length) {
+        container.innerHTML = '<div class="field"><div class="field-label">(no fields)</div></div>';
+        return;
+      }
+      fields.forEach((field) => {
         const row = document.createElement('div');
         row.className = 'field';
 
@@ -221,13 +236,6 @@
     }
 
     // ── SDK callbacks ──────────────────────────────────────────────────
-    mpa.onProcedureDetected((det) => {
-      const pill = document.getElementById('detected-pill');
-      pill.textContent = det.label + '  (score ' + det.score + ')';
-      pill.classList.remove('pending');
-      log('🎯 Auto-detected: ' + det.label + ' [key=' + det.key +
-          ', score=' + det.score + ', runner-up=' + det.runnerUpScore + ']');
-    });
     mpa.onDataReceived((data) => {
       log('✅ Data received from MPA backend');
       document.getElementById('raw-response').textContent = JSON.stringify(data, null, 2);
@@ -242,12 +250,15 @@
 
     // ── Wire up the UI ─────────────────────────────────────────────────
     document.getElementById('btn-start-case').addEventListener('click', () => {
-      mpa.startAutoCase();
-      const candidates = Object.keys(mpa._schemas || {}).join(', ');
-      log('🩺 Auto-detect case started — candidates: ' + candidates);
-      const pill = document.getElementById('detected-pill');
-      pill.textContent = '— awaiting dictation —';
-      pill.classList.add('pending');
+      if (!CATALOG) { log('❌ Schemas not loaded yet'); return; }
+      const key   = document.getElementById('procedure-picker').value;
+      const entry = CATALOG[key];
+      if (!entry) { log('❌ No schema for key=' + key); return; }
+      const schema    = entry.schema || entry;
+      const patientId = entry.patientId || 'DEMO-PATIENT';
+      mpa.startPatientCase(patientId, schema);
+      log('🩺 Case started — procedure=' + (entry.label || key) + ', patient=' + patientId);
+      renderForm(schema, []);     // show empty form so the user sees what fields exist
       document.getElementById('btn-start-rec').disabled = false;
       document.getElementById('btn-listen').disabled    = false;
     });

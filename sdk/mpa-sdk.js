@@ -46,9 +46,6 @@
     this._patientId = null;
     this._schema    = null;
 
-    this._schemas   = null;     // map of { key: { schema, keywords, patientId, label } }
-    this._autoMode  = false;    // when true, _processAudio picks a schema from _schemas
-
     this._listening   = false;
     this._recording   = false;
     this._isDestroyed = false;
@@ -62,7 +59,7 @@
 
     this._callbacks = {
       data: [], transcript: [], error: [], stateChange: [],
-      wakeHeard: [], procedureDetected: []
+      wakeHeard: []
     };
   }
 
@@ -93,11 +90,6 @@
   MPAClient.prototype.startPatientCase = function (patientIdentifier, schemaOrSpec) {
     var self = this;
     self._patientId = patientIdentifier;
-    // Calling startPatientCase explicitly always overrides auto-detect mode.
-    // Otherwise a prior startAutoCase() call would still win and we'd try to
-    // score the transcript against the registered candidate schemas instead
-    // of using the schema the caller just passed.
-    self._autoMode = false;
 
     if (!schemaOrSpec || typeof schemaOrSpec !== 'object') {
       throw new Error('[MPA] startPatientCase requires a schema object or { schemaUrl } spec.');
@@ -142,82 +134,13 @@
       });
   };
 
-  // ── Public: fetch a *map* of candidate schemas (for auto-detect) ─────────
-  // The URL must return JSON shaped like:
-  //   { "key1": { schema, keywords, patientId, label }, "key2": {...}, ... }
-  // After fetching, the schemas are registered with the SDK automatically.
-  MPAClient.prototype.fetchSchemas = function (url) {
-    var self = this;
-    return fetch(url, { method: 'GET', headers: self._headers(false) })
-      .then(function (r) {
-        if (!r.ok) throw new Error('Schemas fetch failed: HTTP ' + r.status);
-        return r.json();
-      })
-      .then(function (schemasMap) {
-        if (!schemasMap || typeof schemasMap !== 'object' || Array.isArray(schemasMap)) {
-          throw new Error('Fetched data is not a valid schemas map.');
-        }
-        self._schemas = schemasMap;
-        console.log('[MPA] Fetched ' + Object.keys(schemasMap).length + ' schemas from', url);
-        return schemasMap;
-      })
-      .catch(function (err) {
-        self._emit('error', { code: 'SCHEMAS_FETCH_FAILED', message: err.message || String(err) });
-        throw err;
-      });
-  };
-
   MPAClient.prototype.endPatientCase = function () {
     this._patientId = null;
     this._schema    = null;
-    this._autoMode  = false;
     return this;
   };
 
   MPAClient.prototype.getState = function () { return this._state; };
-
-  // ── Public: auto-detect mode ────────────────────────────────────────────
-  // Register a set of candidate schemas. Each entry: { schema, keywords, patientId, label }.
-  // After recording, the SDK picks the best-matching one by keyword score against
-  // the transcript and uses it for /sdk/process-procedure.
-  MPAClient.prototype.registerSchemas = function (schemasMap) {
-    if (!schemasMap || typeof schemasMap !== 'object') {
-      throw new Error('[MPA] registerSchemas requires an object map of { key: { schema, keywords, patientId } }.');
-    }
-    this._schemas = schemasMap;
-    return this;
-  };
-
-  MPAClient.prototype.startAutoCase = function () {
-    if (!this._schemas || !Object.keys(this._schemas).length) {
-      throw new Error('[MPA] registerSchemas() must be called before startAutoCase().');
-    }
-    this._autoMode  = true;
-    this._patientId = null;
-    this._schema    = null;
-    console.log('[MPA] Auto-detect case started. Candidates:', Object.keys(this._schemas));
-    return this;
-  };
-
-  // Score each registered schema's keywords against the transcript. Returns
-  // { key, score, runnerUpScore } or { key: null } if no keyword hit.
-  MPAClient.prototype._pickSchemaByKeywords = function (text) {
-    if (!this._schemas) return { key: null, score: 0, runnerUpScore: 0 };
-    var low = (text || '').toLowerCase();
-    var best = { key: null, score: 0 };
-    var runnerUp = 0;
-    for (var key in this._schemas) {
-      if (!Object.prototype.hasOwnProperty.call(this._schemas, key)) continue;
-      var kws = this._schemas[key].keywords || [];
-      var s = 0;
-      for (var i = 0; i < kws.length; i++) {
-        if (kws[i] && low.indexOf(String(kws[i]).toLowerCase()) !== -1) s++;
-      }
-      if (s > best.score) { runnerUp = best.score; best = { key: key, score: s }; }
-      else if (s > runnerUp) { runnerUp = s; }
-    }
-    return { key: best.score > 0 ? best.key : null, score: best.score, runnerUpScore: runnerUp };
-  };
 
   // ── Public: register callbacks ───────────────────────────────────────────
   MPAClient.prototype.onDataReceived       = function (cb) { this._callbacks.data.push(cb);              return this; };
@@ -225,7 +148,6 @@
   MPAClient.prototype.onError              = function (cb) { this._callbacks.error.push(cb);             return this; };
   MPAClient.prototype.onStateChange        = function (cb) { this._callbacks.stateChange.push(cb);       return this; };
   MPAClient.prototype.onWakeHeard          = function (cb) { this._callbacks.wakeHeard.push(cb);         return this; };
-  MPAClient.prototype.onProcedureDetected  = function (cb) { this._callbacks.procedureDetected.push(cb); return this; };
 
   // ── Public: voice activation (wake-word listener) ────────────────────────
   MPAClient.prototype.startListening = function () {
@@ -303,9 +225,9 @@
   // ── Public: manual recording control ─────────────────────────────────────
   MPAClient.prototype.startRecording = function () {
     if (this._recording) return this;
-    if (!this._schema && !this._autoMode) {
+    if (!this._schema) {
       this._emit('error', { code: 'NO_CASE',
-        message: 'startPatientCase() or startAutoCase() must be called before recording.' });
+        message: 'startPatientCase() must be called before recording.' });
       return this;
     }
     var self = this;
@@ -404,29 +326,6 @@
           message: 'No speech detected in the recording. Try again and speak clearly between start and stop.'
         });
         return null;
-      }
-
-      // Auto-detect: pick the best-matching registered schema by keyword score.
-      if (self._autoMode) {
-        var pick = self._pickSchemaByKeywords(transcript);
-        if (!pick.key) {
-          self._setState('idle');
-          self._emit('error', {
-            code:    'NO_PROCEDURE_MATCH',
-            message: 'Could not match the dictation to any registered procedure.'
-          });
-          return null;
-        }
-        var entry = self._schemas[pick.key];
-        // Deep clone so the template isn't mutated across runs
-        self._schema    = JSON.parse(JSON.stringify(entry.schema));
-        self._patientId = entry.patientId || self._patientId;
-        self._emit('procedureDetected', {
-          key:           pick.key,
-          label:         entry.label || pick.key,
-          score:         pick.score,
-          runnerUpScore: pick.runnerUpScore
-        });
       }
 
       self._setState('processing');

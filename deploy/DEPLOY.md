@@ -258,8 +258,9 @@ curl https://mpa.tomorrow.services/api/procedure-types   # no more 502!
 
 ## 10. End-to-end test (Phase 2 done)
 
-Open https://mpa.tomorrow.services/ → *Start auto-detect case* → *Start recording*
-→ say *"adding a composite filling on tooth 14"* → *Stop recording*.
+Open https://mpa.tomorrow.services/ → pick a procedure from the dropdown
+→ *Start case* → *Start recording* → say *"composite filling on tooth 14,
+mesial occlusal, shade A2, light cured"* → *Stop recording*.
 
 While doing this, watch the backend log in another SSH tab:
 
@@ -289,14 +290,16 @@ Tell them:
 >   // when loading the SDK from this origin. From a different origin, the SDK
 >   // also defaults to "/api" relative to itself.
 >
->   mpa.fetchSchemas('https://seraph-host/your/schemas-catalog.json');
->
 >   mpa.onDataReceived((data) => {
 >     // data.schema is the schema you sent, with AI-filled fields.
 >     // data.ai_filled_keys lists which fields the model populated.
 >   });
 >
->   mpa.startAutoCase();
+>   // When the dentist opens a procedure on a patient, hand MPA the schema
+>   // for THAT specific procedure. Any shape works — the backend walks the
+>   // schema recursively to find field-shaped objects (key + label + fieldType).
+>   mpa.startPatientCase(patient.id, schemaForThisProcedure);
+>
 >   mpa.startRecording();
 >   // ... later: mpa.stopRecording();
 > </script>
