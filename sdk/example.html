@@ -47,8 +47,6 @@
     .btn-stop    { background: #ef4444; color: white; }
     .btn-stop:hover:not(:disabled)    { background: #b91c1c; }
     .btn-ghost   { background: #e2e8f0; color: #1e293b; }
-    .btn-sample  { background: #f1f5f9; color: #0f172a; border: 1px solid #cbd5e1; font-size: 12px; padding: 6px 12px; }
-    .btn-sample:hover { background: #e2e8f0; }
     .state-pill {
       display: inline-block; padding: 4px 12px; border-radius: 999px;
       font-size: 12px; font-weight: 600;
@@ -101,14 +99,8 @@
   <div class="card">
     <h2>1. Seraph provides the schema</h2>
     <div class="desc">
-      Paste your own schema here, or click a sample to load one. Any shape works.
-    </div>
-
-    <div class="row-tight">
-      <button class="btn-sample" data-sample="composite">🦷 Composite filling</button>
-      <button class="btn-sample" data-sample="car">🚗 Car service inspection</button>
-      <button class="btn-sample" data-sample="hotel">🏨 Hotel room inspection</button>
-      <button class="btn-sample" data-sample="empty">🗒 Empty (write your own)</button>
+      Paste a schema below. Any shape works — the backend walks it recursively
+      for objects with <code>key</code>+<code>label</code>+<code>fieldType</code>.
     </div>
 
     <div class="row-tight">
@@ -116,7 +108,8 @@
       <input id="patient-id" type="text" value="DEMO-PATIENT-001">
     </div>
 
-    <textarea id="schema-input" spellcheck="false"></textarea>
+    <textarea id="schema-input" spellcheck="false"
+      placeholder='{ "form": { "fields": [ { "key": "...", "label": "...", "fieldType": "..." } ] } }'></textarea>
   </div>
 
   <!-- ── Case start + recording controls ───────────────────────────────── -->
@@ -172,98 +165,6 @@
       token:  'demo-token-from-seraph-auth',
       userId: 'DR-MEZHER'
     });
-
-    // ── Sample schemas (Seraph-style — any shape, any domain) ──────────
-    const SAMPLES = {
-      composite: {
-        activeProcedure: {
-          offering: { label: "Composite Filling" },
-          service:  { label: "Restorative Dentistry" },
-          variants: [
-            { key: "tooth", label: "Tooth", fieldType: "tooth_picker", description: "FDI tooth number" }
-          ],
-          findings: [
-            { key: "caries_depth", label: "Caries depth", fieldType: "select",
-              options: [{value:"shallow"},{value:"medium"},{value:"deep"}] }
-          ],
-          results: { fields: [
-            { key: "surfaces", label: "Surfaces restored", fieldType: "multi_select",
-              options: [{value:"mesial"},{value:"occlusal"},{value:"distal"},{value:"buccal"},{value:"lingual"}] },
-            { key: "shade", label: "Shade", fieldType: "select",
-              options: [{value:"A1"},{value:"A2"},{value:"A3"},{value:"B1"},{value:"B2"}] },
-            { key: "cure_method", label: "Cure method", fieldType: "select",
-              options: [{value:"light_cure"},{value:"self_cure"}] },
-            { key: "polish_completed", label: "Polish completed", fieldType: "boolean", required: true }
-          ] }
-        }
-      },
-      car: {
-        inspection: {
-          label: "Car service inspection",
-          vehicle: { fields: [
-            { key:"vehicle_make",  label:"Make",  fieldType:"select",
-              options:[{value:"toyota"},{value:"honda"},{value:"ford"},{value:"bmw"},{value:"hyundai"}] },
-            { key:"vehicle_model", label:"Model", fieldType:"textarea" },
-            { key:"year",          label:"Model year", fieldType:"number" },
-            { key:"mileage",       label:"Mileage", fieldType:"number", unit:"km" }
-          ] },
-          checks: [
-            { key:"engine_oil_level", label:"Engine oil level", fieldType:"select",
-              options:[{value:"low"},{value:"normal"},{value:"high"}] },
-            { key:"tire_condition", label:"Tire condition", fieldType:"select",
-              options:[{value:"good"},{value:"worn"},{value:"replace_needed"}] },
-            { key:"brake_pads", label:"Brake pads", fieldType:"select",
-              options:[{value:"good"},{value:"worn"},{value:"replace_needed"}] },
-            { key:"battery_voltage", label:"Battery voltage", fieldType:"number", unit:"V" }
-          ],
-          outcome: { fields: [
-            { key:"issues_found",    label:"Issues found", fieldType:"textarea" },
-            { key:"estimated_cost",  label:"Estimated cost", fieldType:"number", unit:"USD" },
-            { key:"recommended_action", label:"Recommended actions", fieldType:"multi_select",
-              options:[{value:"oil_change"},{value:"tire_rotation"},{value:"brake_service"},{value:"alignment"},{value:"battery_replace"}] }
-          ] }
-        }
-      },
-      hotel: {
-        housekeeping_report: {
-          label: "Hotel room inspection after checkout",
-          room_info: { fields: [
-            { key:"room_number", label:"Room number", fieldType:"textarea" },
-            { key:"room_type",   label:"Room type",   fieldType:"select",
-              options:[{value:"standard"},{value:"deluxe"},{value:"suite"},{value:"penthouse"}] },
-            { key:"floor",       label:"Floor",       fieldType:"number" }
-          ] },
-          occupancy_flags: [
-            { key:"guest_left_early",  label:"Guest left early",  fieldType:"boolean" },
-            { key:"minibar_used",      label:"Minibar used",      fieldType:"boolean" },
-            { key:"smoking_detected",  label:"Smoking detected",  fieldType:"boolean" }
-          ],
-          condition: { assessment: [
-            { key:"cleanliness_rating", label:"Cleanliness rating", fieldType:"select",
-              options:[{value:"excellent"},{value:"good"},{value:"fair"},{value:"poor"}] },
-            { key:"damage_found", label:"Damage found", fieldType:"boolean" },
-            { key:"damage_description", label:"Damage description", fieldType:"textarea" },
-            { key:"requires_deep_clean", label:"Requires deep clean", fieldType:"boolean" }
-          ] },
-          issues: { list: [
-            { key:"maintenance_issues", label:"Maintenance issues", fieldType:"tags" },
-            { key:"missing_amenities",  label:"Missing amenities",  fieldType:"tags" }
-          ] },
-          billing: { fields: [
-            { key:"additional_charges", label:"Additional charges", fieldType:"number", unit:"USD" }
-          ] }
-        }
-      },
-      empty: {
-        my_form: {
-          label: "Your form",
-          fields: [
-            { key: "example_field", label: "Example field", fieldType: "textarea",
-              description: "Replace this with whatever fields you want" }
-          ]
-        }
-      }
-    };
 
     // ── Helpers ────────────────────────────────────────────────────────
     // Shape-agnostic walker (mirrors the backend): find every field-shaped
@@ -329,12 +230,6 @@
       line.textContent = '[' + new Date().toLocaleTimeString() + '] ' + msg;
       document.getElementById('log').appendChild(line);
     }
-    function loadSample(name) {
-      const ta = document.getElementById('schema-input');
-      ta.classList.remove('bad');
-      ta.value = JSON.stringify(SAMPLES[name], null, 2);
-    }
-
     // ── SDK callbacks ──────────────────────────────────────────────────
     mpa.onDataReceived((data) => {
       log('✅ Data received from MPA backend (filled ' + (data.ai_filled_keys || []).length + ' fields)');
@@ -347,12 +242,6 @@
     mpa.onWakeHeard((phrase) => log('🎤 Heard: "' + phrase + '"  (say "start recording" to begin)'));
 
     // ── Wire up the UI ─────────────────────────────────────────────────
-    document.querySelectorAll('.btn-sample').forEach((btn) => {
-      btn.addEventListener('click', () => loadSample(btn.dataset.sample));
-    });
-    // Pre-load composite sample on first render so the user sees something
-    loadSample('composite');
-
     document.getElementById('btn-start-case').addEventListener('click', () => {
       const ta = document.getElementById('schema-input');
       let schema;
