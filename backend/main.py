@@ -397,10 +397,20 @@ async def sdk_process_procedure(
             return {"success": False, "approved_text": text, "api_error": v_err,
                     "processing_time_ms": int((time.time() - start_time) * 1000)}
 
-        if not body.schema or "activeProcedure" not in body.schema:
+        # Soft schema check: accept any shape that contains at least one
+        # field-shaped dict (key + label + fieldType). The walker in
+        # procedure_schema.py handles any nesting (variants/findings/results,
+        # flat fields[], custom sections like examination/diagnosis/treatment).
+        if not body.schema:
             return {"success": False, "api_error":
                     {"code": "BAD_SCHEMA",
-                     "message": "schema must contain an activeProcedure object."},
+                     "message": "schema is required."},
+                    "processing_time_ms": int((time.time() - start_time) * 1000)}
+        from procedure_schema import flatten_fields as _ff_check
+        if not _ff_check(body.schema):
+            return {"success": False, "api_error":
+                    {"code": "BAD_SCHEMA",
+                     "message": "schema contains no fillable fields (each field needs 'key', 'label', 'fieldType')."},
                     "processing_time_ms": int((time.time() - start_time) * 1000)}
 
         print(f"\n=== /sdk/process-procedure patient={body.patient_id!r} ===")

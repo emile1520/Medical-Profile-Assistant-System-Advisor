@@ -74,43 +74,64 @@ def get_sample_procedure() -> dict:
     return {"activeProcedure": {}}
 
 
-# ── Schema operations (procedure-agnostic) ────────────────────────────────────
+# ── Schema operations (procedure-agnostic, any shape) ────────────────────────
+def _walk_fields_with_section(node, section_hint, out):
+    """
+    Recursively yield (field_dict, section_name) for every field-shaped dict
+    (has 'key', 'label', 'fieldType') in the schema, regardless of nesting.
+    `section_hint` is the parent dict key, so e.g. fields under
+    activeProcedure.variants[] get section='variants'. For non-dental shapes
+    the section is whatever parent key contained them; if none, 'fields'.
+    """
+    if isinstance(node, dict):
+        if "key" in node and "label" in node and "fieldType" in node:
+            out.append((node, section_hint or "fields"))
+            return
+        for k, v in node.items():
+            child_hint = k if isinstance(k, str) else section_hint
+            _walk_fields_with_section(v, child_hint, out)
+    elif isinstance(node, list):
+        for item in node:
+            _walk_fields_with_section(item, section_hint, out)
+
+
 def flatten_fields(schema: dict) -> list:
     """
-    Walk the schema and return a flat list of all editable fields with section labels.
+    Walk the schema (any shape) and return a flat list of editable fields,
+    each with a 'section' label derived from its parent key.
+
+    Backward-compatible: dental schemas still produce variants/findings/results
+    section labels because those are the parent keys.
     """
+    pairs: list = []
+    _walk_fields_with_section(schema, None, pairs)
     out = []
-    proc = schema.get("activeProcedure", {})
-    for v in proc.get("variants", []):
-        out.append({**v, "section": "variants"})
-    for f in proc.get("findings", []):
-        out.append({**f, "section": "findings"})
-    for r in proc.get("results", {}).get("fields", []):
-        out.append({**r, "section": "results"})
+    for field, section in pairs:
+        # Normalize: results.fields[] should still report section="results"
+        # because that's the meaningful parent, not "fields".
+        if section == "fields":
+            section = "results"
+        out.append({**field, "section": section})
     return out
 
 
 def merge_qwen_values(schema: dict, qwen_values: dict) -> dict:
     """
-    Apply QWEN-extracted values into the schema (in place on a copy).
+    Apply QWEN-extracted values into the schema (in place on the given dict).
     Skips locked fields. Marks each updated field with `filled_by_ai: True`.
-    """
-    proc = schema.get("activeProcedure", {})
 
-    def maybe_update(field):
+    Shape-agnostic: walks any nesting to find field-shaped dicts and updates
+    them where they live in the schema (mutation through Python references).
+    """
+    pairs: list = []
+    _walk_fields_with_section(schema, None, pairs)
+    for field, _section in pairs:
         key = field.get("key")
         if not key or field.get("locked"):
-            return
+            continue
         if key in qwen_values and qwen_values[key] is not None:
             field["value"] = qwen_values[key]
             field["filled_by_ai"] = True
-
-    for f in proc.get("variants", []):
-        maybe_update(f)
-    for f in proc.get("findings", []):
-        maybe_update(f)
-    for f in proc.get("results", {}).get("fields", []):
-        maybe_update(f)
     return schema
 
 
