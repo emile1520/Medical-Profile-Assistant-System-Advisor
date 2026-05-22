@@ -6,13 +6,31 @@
   // { apiBase: 'http://your-host:8000' } to MPAClient for local dev.
   var DEFAULT_API_BASE = '/api';
 
-  // Wake phrases — case-insensitive substring match against what Web Speech API
-  // hears. "hey seraph" is the canonical phrase per Tomorrow Services; the rest
-  // are kept for backwards-compat with anyone using the existing demo.
+  // Wake phrases — case-insensitive substring match against what Web Speech
+  // API hears. "Start recording" is the PRIMARY phrase because the Web Speech
+  // API has it in its English vocabulary and transcribes it reliably.
+  //
+  // "Hey Seraph" is also accepted (Tomorrow Services' preferred phrase), but
+  // SR doesn't know the word "seraph" and frequently mishears it as siri,
+  // sarah, serie, set off, etc. The phonetic neighbours below catch the most
+  // common misrecognitions so users who try "hey seraph" can still trigger.
+  //
+  // Deliberately EXCLUDED to avoid false positives:
+  //   - "hey siri"     → activates Apple devices in the room
+  //   - "hey set off"  → too generic, common conversation
+  //   - "hey set up"   → too generic
+  //   - "hey sherman"  → common name
+  // If you find another mishearing in production, add it here.
   var WAKE_VARIANTS = [
-    'hey seraph',
+    // Primary — reliably recognized by Web Speech API
     'start recording', 'start record', 'begin recording',
-    'start the recording', 'start a recording'
+    'start the recording', 'start a recording',
+    // Secondary — Tomorrow Services' preferred phrase + phonetic neighbours
+    // because SR doesn't reliably transcribe "seraph"
+    'hey seraph', 'hi seraph',
+    'hey sarah', 'hi sarah', 'hey sara',
+    'hey serie', 'hey ciri',
+    'hey scarab', 'hey seraf', 'hey saraph'
   ];
   var STOP_VARIANTS = [
     'stop recording', 'stop record', 'stop the recording',
