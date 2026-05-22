@@ -93,6 +93,11 @@
   MPAClient.prototype.startPatientCase = function (patientIdentifier, schemaOrSpec) {
     var self = this;
     self._patientId = patientIdentifier;
+    // Calling startPatientCase explicitly always overrides auto-detect mode.
+    // Otherwise a prior startAutoCase() call would still win and we'd try to
+    // score the transcript against the registered candidate schemas instead
+    // of using the schema the caller just passed.
+    self._autoMode = false;
 
     if (!schemaOrSpec || typeof schemaOrSpec !== 'object') {
       throw new Error('[MPA] startPatientCase requires a schema object or { schemaUrl } spec.');
