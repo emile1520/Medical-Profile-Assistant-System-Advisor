@@ -6,7 +6,11 @@
   // { apiBase: 'http://your-host:8000' } to MPAClient for local dev.
   var DEFAULT_API_BASE = '/api';
 
+  // Wake phrases — case-insensitive substring match against what Web Speech API
+  // hears. "hey seraph" is the canonical phrase per Tomorrow Services; the rest
+  // are kept for backwards-compat with anyone using the existing demo.
   var WAKE_VARIANTS = [
+    'hey seraph',
     'start recording', 'start record', 'begin recording',
     'start the recording', 'start a recording'
   ];

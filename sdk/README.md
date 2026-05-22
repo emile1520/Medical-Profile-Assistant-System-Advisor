@@ -81,10 +81,10 @@ Registers the current case. Must be called **before** recording.
 
 **Voice activation (hands-free):**
 ```js
-client.startListening();   // listens for "start recording"
+client.startListening();   // listens for "hey seraph"
 client.stopListening();    // turns off voice activation
 ```
-When the dentist says *"start recording"*, the SDK starts capturing. When they say *"stop recording"*, it stops and processes automatically.
+When the dentist says *"hey seraph"*, the SDK starts capturing. When they say *"stop recording"*, it stops and processes automatically. Legacy phrases like *"start recording"* are also accepted for backwards compatibility.
 
 **Manual (wire to buttons):**
 ```js

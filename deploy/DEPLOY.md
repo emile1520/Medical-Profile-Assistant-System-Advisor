@@ -1,6 +1,6 @@
 # MPA — Deployment Playbook
 
-**Production target:** https://mpa.tomorrow.services/ → `forge@3.136.112.231:/home/forge/mpa`
+**Production target:** https://mpa.tomorrow.services/ → `forge@18.117.125.21:/home/forge/mpa`
 **Server type:** Ubuntu 24.04 LTS, **Laravel Forge–managed**
 
 ## What gets deployed
@@ -49,7 +49,7 @@ both phases back-to-back without the wait.
 From your laptop:
 
 ```bash
-ssh forge@3.136.112.231
+ssh forge@18.117.125.21
 ```
 
 Forge sets up the `forge` user automatically. SSH-key auth is preset by
@@ -312,7 +312,7 @@ Tell them:
 ## Future updates
 
 ```bash
-ssh forge@3.136.112.231
+ssh forge@18.117.125.21
 cd /home/forge/mpa
 git pull
 
