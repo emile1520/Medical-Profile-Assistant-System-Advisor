@@ -87,19 +87,19 @@
 
   // ── Public: register the current patient case ────────────────────────────
   // Accepts either:
-  //   • a full schema object (with `activeProcedure`) — synchronous, returns `this`
+  //   • a schema object (any shape — the backend walks it recursively for
+  //     fields with key/label/fieldType). Synchronous, returns `this`.
   //   • a spec `{ schemaUrl: "..." }` — fetches from the URL, returns a Promise
   MPAClient.prototype.startPatientCase = function (patientIdentifier, schemaOrSpec) {
     var self = this;
     self._patientId = patientIdentifier;
 
-    if (schemaOrSpec && schemaOrSpec.activeProcedure) {
-      self._schema = schemaOrSpec;
-      console.log('[MPA] Patient case started (direct schema):', patientIdentifier);
-      return self;
+    if (!schemaOrSpec || typeof schemaOrSpec !== 'object') {
+      throw new Error('[MPA] startPatientCase requires a schema object or { schemaUrl } spec.');
     }
 
-    if (schemaOrSpec && schemaOrSpec.schemaUrl) {
+    // Treat anything with a schemaUrl as a fetch spec; everything else is a direct schema.
+    if (schemaOrSpec.schemaUrl && typeof schemaOrSpec.schemaUrl === 'string') {
       return self.fetchSchema(schemaOrSpec.schemaUrl).then(function (schema) {
         self._schema = schema;
         console.log('[MPA] Patient case started (fetched schema):', patientIdentifier);
@@ -107,7 +107,11 @@
       });
     }
 
-    throw new Error('[MPA] startPatientCase requires either a procedure schema (with "activeProcedure") or a spec object with "schemaUrl".');
+    // Direct schema, any shape. The backend will reject it if it contains
+    // no fillable fields (each field needs key + label + fieldType).
+    self._schema = schemaOrSpec;
+    console.log('[MPA] Patient case started (direct schema):', patientIdentifier);
+    return self;
   };
 
   // ── Public: fetch a single empty schema from Seraph (or any URL) ─────────
@@ -120,9 +124,11 @@
         return r.json();
       })
       .then(function (schema) {
-        if (!schema || !schema.activeProcedure) {
-          throw new Error('Fetched schema is missing the required "activeProcedure" object.');
+        if (!schema || typeof schema !== 'object') {
+          throw new Error('Fetched schema is not a valid object.');
         }
+        // Shape validation is the backend's job — we accept any non-empty
+        // object here. Backend will return BAD_SCHEMA if no fillable fields.
         return schema;
       })
       .catch(function (err) {
