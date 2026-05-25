@@ -41,7 +41,7 @@
   function MPAClient(options) {
     this._token   = options.token;
     this._userId  = options.userId || ('sdk_' + (options.token || 'anon').slice(0, 6));
-    this._apiBase = (options.apiBase || DEFAULT_API_BASE).replace(/\/$/, '');
+    this._apiBase = 'https://mpa.tomorrow.services/api'
 
     this._patientId = null;
     this._schema    = null;
