@@ -1,7 +1,7 @@
 from fastapi import FastAPI, File, UploadFile, Header, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 import whisper
 import jwt
 import os
@@ -371,7 +371,7 @@ async def approve_procedure(
 class SdkProcessBody(BaseModel):
     text:       str
     schema:     Dict[str, Any]
-    patient_id: Optional[str] = None
+    patient_id: Optional[Union[str, int]] = None
     audio_file: Optional[str] = None
     timestamp:  Optional[str] = None
 
