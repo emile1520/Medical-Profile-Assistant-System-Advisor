@@ -168,12 +168,19 @@
 
     // ── Helpers ────────────────────────────────────────────────────────
     // Shape-agnostic walker (mirrors the backend): find every field-shaped
-    // dict (key + label + fieldType) anywhere in the schema.
+    // dict anywhere in the schema. A "field" needs label + fieldType plus
+    // either 'key' or 'fieldKey' (Seraph's DB uses fieldKey). Normalize to
+    // 'key' so the rest of the renderer only sees one identifier.
     function flattenSchema(schema) {
       const out = [];
       function walk(node) {
         if (node && typeof node === 'object' && !Array.isArray(node)) {
-          if ('key' in node && 'label' in node && 'fieldType' in node) { out.push(node); return; }
+          const hasId = ('key' in node) || ('fieldKey' in node);
+          if (hasId && 'label' in node && 'fieldType' in node) {
+            if (!('key' in node) && ('fieldKey' in node)) node.key = node.fieldKey;
+            out.push(node);
+            return;
+          }
           for (const k in node) walk(node[k]);
         } else if (Array.isArray(node)) {
           node.forEach(walk);

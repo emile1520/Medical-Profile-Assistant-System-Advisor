@@ -78,13 +78,23 @@ def get_sample_procedure() -> dict:
 def _walk_fields_with_section(node, section_hint, out):
     """
     Recursively yield (field_dict, section_name) for every field-shaped dict
-    (has 'key', 'label', 'fieldType') in the schema, regardless of nesting.
-    `section_hint` is the parent dict key, so e.g. fields under
+    in the schema, regardless of nesting. A "field" is any dict with:
+      - "label" + "fieldType", AND
+      - either "key" OR "fieldKey" (some integrators — e.g. Seraph itself —
+        store the identifier as `fieldKey` in their database schema, so we
+        accept both names interchangeably).
+    The walker normalizes by writing the value into `node["key"]` so all
+    downstream code only needs to know about `key`. This mutation is benign
+    and idempotent.
+    `section_hint` is the parent dict key — e.g. fields under
     activeProcedure.variants[] get section='variants'. For non-dental shapes
     the section is whatever parent key contained them; if none, 'fields'.
     """
     if isinstance(node, dict):
-        if "key" in node and "label" in node and "fieldType" in node:
+        has_id = ("key" in node) or ("fieldKey" in node)
+        if has_id and "label" in node and "fieldType" in node:
+            if "key" not in node and "fieldKey" in node:
+                node["key"] = node["fieldKey"]
             out.append((node, section_hint or "fields"))
             return
         for k, v in node.items():

@@ -204,17 +204,23 @@ def _parse_json_block(text: str) -> dict:
 
 def _walk_fields(node, out):
     """
-    Recursively find every dict that looks like a fillable field
-    (has 'key', 'label', and 'fieldType'), regardless of where it lives
-    in the schema. Skips locked fields. Mutates `out` in place.
+    Recursively find every dict that looks like a fillable field, regardless
+    of where it lives in the schema. A "field" is any dict with:
+      - "label" + "fieldType", AND
+      - either "key" OR "fieldKey" (Seraph's own DB stores the identifier
+        as `fieldKey`, so we accept both names interchangeably and normalize
+        to `key` for downstream code).
+    Skips locked fields. Mutates `out` in place.
 
-    This makes the extractor schema-shape-agnostic: callers can send a
-    schema with variants/findings/results, a flat fields[] list, or any
-    custom nesting (examination/diagnosis/treatment/...) — we'll find
-    every field as long as it has the three identifying keys.
+    This makes the extractor schema-shape-agnostic: callers can send a schema
+    with variants/findings/results, a flat fields[] list, or any custom
+    nesting — we'll find every field as long as it has the identifying keys.
     """
     if isinstance(node, dict):
-        if "key" in node and "label" in node and "fieldType" in node:
+        has_id = ("key" in node) or ("fieldKey" in node)
+        if has_id and "label" in node and "fieldType" in node:
+            if "key" not in node and "fieldKey" in node:
+                node["key"] = node["fieldKey"]
             if not node.get("locked"):
                 out.append(node)
             # Don't recurse into a field's own sub-objects (e.g. options)
