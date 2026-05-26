@@ -303,6 +303,9 @@ OUTPUT RULES:
 - For "multi_select" / "tags", use a JSON array of strings.
 - For "boolean", use true or false.
 - For "number", use a numeric value (no quotes).
+- For "date", use ISO format "YYYY-MM-DD" (e.g. "2026-05-05"). If only the year is mentioned, use "YYYY-01-01"; if only month+year, use "YYYY-MM-01". Always zero-pad month and day.
+- For "datetime", use ISO format "YYYY-MM-DDTHH:MM:SS" (24-hour clock).
+- For "time", use ISO format "HH:MM" (24-hour clock).
 - For "textarea" / "tooth_picker", use a string.
 - ONLY include fields that are clearly mentioned or implied in the dictation. Skip everything else.
 - Do NOT invent data. If unsure, omit the field.
